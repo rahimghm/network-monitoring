@@ -38,8 +38,7 @@ GRANT ALL ON SCHEMA public TO monitor_user;
 Charger le schéma (inclut désormais `users`, `alert_thresholds`,
 `alert_events`, `snapshots`, `snapshot_items` en plus des tables existantes) :
 ```bash
-psql -U rahim -d monitoring -h localhost -f database/schema.sql
-```
+psql -U rahim -d monitoring -h localhost -f "C:\Users\User\Desktop\monitoring-appA\database\schema.sql"
 
 ## 2. Backend
 

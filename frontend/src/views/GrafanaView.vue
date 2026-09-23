@@ -1,9 +1,30 @@
 <script setup>
 import { ref } from 'vue'
 
-const grafanaUrl = ref(localStorage.getItem('grafana_dashboard_url') || '')
+function isExternalUrl(value) {
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol) && url.origin !== window.location.origin
+  } catch {
+    return false
+  }
+}
+
+const savedUrl = localStorage.getItem('grafana_dashboard_url') || ''
+const grafanaUrl = ref(isExternalUrl(savedUrl) ? savedUrl : '')
+const error = ref(null)
 
 function save() {
+  const value = grafanaUrl.value.trim()
+  if (!isExternalUrl(value)) {
+    error.value = "Saisis une URL Grafana externe, par exemple http://localhost:3000/..."
+    grafanaUrl.value = ''
+    localStorage.removeItem('grafana_dashboard_url')
+    return
+  }
+
+  error.value = null
+  grafanaUrl.value = value
   localStorage.setItem('grafana_dashboard_url', grafanaUrl.value)
 }
 </script>
@@ -25,6 +46,7 @@ function save() {
         />
         <button @click="save">Enregistrer</button>
       </div>
+      <p v-if="error" class="error">{{ error }}</p>
     </div>
 
     <div v-if="grafanaUrl" class="embed-wrapper">
@@ -73,4 +95,5 @@ button {
 }
 .embed-frame { width: 100%; height: 100%; border: none; }
 .placeholder { color: #888; font-size: 14px; text-align: center; padding: 40px 0; }
+.error { color: #d1453b; font-size: 13px; margin: 8px 0 0; }
 </style>
