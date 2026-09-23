@@ -1,9 +1,16 @@
 import axios from 'axios'
+import { reactive } from 'vue'
 
 export const API_BASE = 'http://localhost:8000'
 export const WS_BASE = 'ws://localhost:8000'
 
 const api = axios.create({ baseURL: API_BASE })
+
+export const authState = reactive({
+  token: localStorage.getItem('auth_token'),
+  role: localStorage.getItem('auth_role'),
+  username: localStorage.getItem('auth_username'),
+})
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token')
@@ -19,6 +26,9 @@ api.interceptors.response.use(
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_role')
       localStorage.removeItem('auth_username')
+      authState.token = null
+      authState.role = null
+      authState.username = null
       if (location.pathname !== '/login') location.href = '/login'
     }
     return Promise.reject(err)
@@ -40,6 +50,9 @@ export const login = async (username, password) => {
   localStorage.setItem('auth_token', data.access_token)
   localStorage.setItem('auth_role', data.role)
   localStorage.setItem('auth_username', data.username)
+  authState.token = data.access_token
+  authState.role = data.role
+  authState.username = data.username
   return data
 }
 
@@ -47,19 +60,26 @@ export const logout = () => {
   localStorage.removeItem('auth_token')
   localStorage.removeItem('auth_role')
   localStorage.removeItem('auth_username')
+  authState.token = null
+  authState.role = null
+  authState.username = null
 }
 
 export const getToken = () => localStorage.getItem('auth_token')
 export const getRole = () => localStorage.getItem('auth_role')
 export const isAuthenticated = () => !!getToken()
+export const changePassword = (payload) => api.patch('/auth/password', payload)
 
 export const listUsers = () => api.get('/users').then(r => r.data)
 export const createUser = (payload) => api.post('/users', payload).then(r => r.data)
+export const updateUser = (id, payload) => api.patch(`/users/${id}`, payload).then(r => r.data)
+export const deleteUser = (id) => api.delete(`/users/${id}`)
 
 // ---------- Équipements ----------
 
 export const listEquipments = () => api.get('/equipments').then(r => r.data)
 export const createEquipment = (payload) => api.post('/equipments', payload).then(r => r.data)
+export const updateEquipment = (id, payload) => api.patch(`/equipments/${id}`, payload).then(r => r.data)
 export const deleteEquipment = (id) => api.delete(`/equipments/${id}`)
 export const diagnoseEquipment = (id) => api.post(`/equipments/${id}/diagnose`).then(r => r.data)
 

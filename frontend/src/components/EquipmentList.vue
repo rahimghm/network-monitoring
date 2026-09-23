@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   equipments: { type: Array, required: true },
@@ -7,7 +7,10 @@ const props = defineProps({
   readOnly: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:selectedIds', 'delete'])
+const emit = defineEmits(['update:selectedIds', 'delete', 'update'])
+const openMenuId = ref(null)
+const editingId = ref(null)
+const editForm = ref({ name: '', hostname: '', community: '' })
 
 const allSelected = computed(() =>
   props.equipments.length > 0 && props.selectedIds.length === props.equipments.length
@@ -21,6 +24,21 @@ function toggleOne(id) {
   const set = new Set(props.selectedIds)
   set.has(id) ? set.delete(id) : set.add(id)
   emit('update:selectedIds', [...set])
+}
+
+function toggleMenu(id) {
+  openMenuId.value = openMenuId.value === id ? null : id
+}
+
+function startEditing(eq) {
+  editingId.value = eq.id
+  openMenuId.value = null
+  editForm.value = { name: eq.name, hostname: eq.hostname, community: eq.community || 'public' }
+}
+
+function saveEditing() {
+  emit('update', { id: editingId.value, ...editForm.value })
+  editingId.value = null
 }
 </script>
 
@@ -45,12 +63,28 @@ function toggleOne(id) {
       />
       <div class="status-dot" :class="eq.is_up === true ? 'up' : eq.is_up === false ? 'down' : 'unknown'"></div>
 
-      <div class="info">
+      <div v-if="editingId !== eq.id" class="info">
         <div class="name">{{ eq.name }}</div>
         <div class="hostname">{{ eq.hostname }}<span v-if="eq.last_ip"> · {{ eq.last_ip }}</span></div>
       </div>
 
-      <button v-if="!readOnly" class="delete-btn" @click.stop="emit('delete', eq)">✕</button>
+      <div v-if="editingId === eq.id" class="edit-fields">
+        <input v-model.trim="editForm.name" aria-label="Nom de l'équipement" />
+        <input v-model.trim="editForm.hostname" aria-label="Hostname de l'équipement" />
+        <input v-model.trim="editForm.community" aria-label="Communauté SNMP" />
+        <div class="edit-actions">
+          <button class="save-btn" @click.stop="saveEditing">Enregistrer</button>
+          <button class="cancel-btn" @click.stop="editingId = null">Annuler</button>
+        </div>
+      </div>
+
+      <div v-if="!readOnly && editingId !== eq.id" class="actions">
+        <button class="more-btn" title="Actions" @click.stop="toggleMenu(eq.id)">...</button>
+        <div v-if="openMenuId === eq.id" class="action-menu">
+          <button @click.stop="startEditing(eq)">Modifier</button>
+          <button class="danger-action" @click.stop="emit('delete', eq); openMenuId = null">Supprimer</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -92,13 +126,17 @@ function toggleOne(id) {
 .name { font-weight: 600; font-size: 14px; color: #1a1d23; }
 .hostname { font-size: 12px; color: #888; }
 
-.delete-btn {
-  padding: 4px 8px;
-  background: transparent;
-  color: #d1453b;
-  border: 1px solid #f0d0ce;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-}
+.actions { position: relative; }
+.more-btn { padding: 3px 8px; background: transparent; color: #666; border: 1px solid #e2e5ea; border-radius: 6px; cursor: pointer; font-weight: 700; letter-spacing: 2px; }
+.action-menu { position: absolute; right: 0; top: 30px; z-index: 5; min-width: 120px; padding: 4px; background: #fff; border: 1px solid #e2e5ea; border-radius: 6px; box-shadow: 0 5px 14px rgba(25, 32, 45, .12); }
+.action-menu button { display: block; width: 100%; padding: 7px 9px; background: transparent; border: 0; border-radius: 4px; color: #444; text-align: left; cursor: pointer; font-size: 12px; }
+.action-menu button:hover { background: #f5f7fa; }
+.action-menu .danger-action { color: #c03932; }
+.edit-fields { display: grid; flex: 1; grid-template-columns: repeat(3, minmax(100px, 1fr)); gap: 6px; }
+.edit-fields input { min-width: 0; padding: 6px 7px; border: 1px solid #d5d9e0; border-radius: 5px; font-size: 12px; }
+.edit-actions { display: flex; align-items: center; gap: 4px; grid-column: 1 / -1; }
+.edit-actions button { padding: 5px 8px; border: 0; border-radius: 5px; cursor: pointer; font-size: 11px; }
+.save-btn { background: #3b6fed; color: #fff; }
+.cancel-btn { background: #f0f1f4; color: #555; }
+@media (max-width: 600px) { .edit-fields { grid-template-columns: 1fr; } }
 </style>

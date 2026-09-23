@@ -42,7 +42,7 @@ async function handleSubmit() {
 
     <div class="field">
       <label for="hostname">Hostname</label>
-      <input id="hostname" v-model="hostname" type="text" placeholder="ex: switch1.local ou 192.168.2.132" />
+      <input id="hostname" v-model="hostname" type="text" placeholder="ex: switch1 ou 192.168.2.132" />
     </div>
 
     <div class="field">

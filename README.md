@@ -43,9 +43,16 @@ psql -U rahim -d monitoring -h localhost -f database/schema.sql
 
 ## 2. Backend
 
+### Requirements
+
+- Python 3.11
+- PostgreSQL
+
+> Python 3.12+ is currently not supported because the project uses PySNMP 4.4.12, which depends on the removed `asyncore` module.
+
 ```bash
 cd backend
-python3 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env            # adapte les identifiants DB si besoin

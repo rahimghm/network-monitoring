@@ -9,6 +9,12 @@ class EquipmentCreate(BaseModel):
     community: str = Field(default="public", max_length=50)
 
 
+class EquipmentUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    hostname: Optional[str] = Field(default=None, min_length=1, max_length=150)
+    community: Optional[str] = Field(default=None, max_length=50)
+
+
 class EquipmentOut(BaseModel):
     id: int
     name: str
@@ -59,6 +65,16 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6)
     role: str = Field(default="technician")  # admin | technician | supervisor
+
+
+class UserUpdate(BaseModel):
+    role: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=6)
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6)
 
 
 class UserOut(BaseModel):

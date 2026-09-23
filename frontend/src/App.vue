@@ -1,15 +1,15 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { isAuthenticated, getRole, logout } from './api.js'
+import { authState, logout } from './api.js'
 import ToastStack from './components/ToastStack.vue'
 
 const route = useRoute()
 const router = useRouter()
 
-const authed = computed(() => isAuthenticated())
-const role = computed(() => getRole())
-const username = computed(() => localStorage.getItem('auth_username'))
+const authed = computed(() => !!authState.token)
+const role = computed(() => authState.role)
+const username = computed(() => authState.username)
 
 function handleLogout() {
   logout()
@@ -29,6 +29,8 @@ function handleLogout() {
             <router-link to="/">Dashboard</router-link>
             <router-link to="/history">Historique</router-link>
             <router-link v-if="role === 'admin'" to="/thresholds">Alertes</router-link>
+            <router-link v-if="role === 'admin'" to="/users">Comptes</router-link>
+            <router-link to="/account">Mon compte</router-link>
             <router-link to="/grafana">Grafana</router-link>
           </nav>
           <div class="user-info">

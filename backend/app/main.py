@@ -12,8 +12,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from .config import POLL_INTERVAL_SECONDS
 from .database import get_cursor, get_db
 from .schemas import (
-    EquipmentCreate, EquipmentOut, DiagnosticOut, MetricPointOut,
-    UserCreate, UserOut, TokenOut,
+    EquipmentCreate, EquipmentUpdate, EquipmentOut, DiagnosticOut, MetricPointOut,
+    UserCreate, UserUpdate, PasswordChange, UserOut, TokenOut,
     ThresholdCreate, ThresholdOut,
     SnapshotOut, SnapshotDetailOut,
 )
@@ -150,6 +150,21 @@ def me(user: dict = Depends(authmod.get_current_user)):
         return cur.fetchone()
 
 
+@app.patch("/auth/password", status_code=204)
+def change_password(payload: PasswordChange,
+                    user: dict = Depends(authmod.get_current_user)):
+    with get_cursor() as cur:
+        cur.execute("SELECT password_hash FROM users WHERE id = %s", (user["id"],))
+        account = cur.fetchone()
+        if account is None or not authmod.verify_password(payload.current_password, account["password_hash"]):
+            raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+        cur.execute(
+            "UPDATE users SET password_hash = %s WHERE id = %s",
+            (authmod.hash_password(payload.new_password), user["id"]),
+        )
+    return None
+
+
 @app.get("/users", response_model=List[UserOut])
 def list_users(user: dict = Depends(authmod.require_role("admin"))):
     with get_cursor() as cur:
@@ -170,6 +185,57 @@ def create_user(payload: UserCreate, user: dict = Depends(authmod.require_role("
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Erreur création utilisateur: {e}")
         return cur.fetchone()
+
+
+@app.patch("/users/{user_id}", response_model=UserOut)
+def update_user(user_id: int, payload: UserUpdate,
+                user: dict = Depends(authmod.require_role("admin"))):
+    if payload.role is None and payload.password is None:
+        raise HTTPException(status_code=400, detail="Aucune modification fournie")
+    if payload.role is not None and payload.role not in authmod.ROLES:
+        raise HTTPException(status_code=400, detail=f"Rôle invalide : {payload.role}")
+
+    updates = []
+    values = []
+    if payload.role is not None:
+        updates.append("role = %s")
+        values.append(payload.role)
+    if payload.password is not None:
+        updates.append("password_hash = %s")
+        values.append(authmod.hash_password(payload.password))
+    values.append(user_id)
+
+    with get_cursor() as cur:
+        cur.execute("SELECT id, role FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+        if (target["role"] == "admin" and payload.role == "technician") or (target["role"] == "admin" and payload.role == "supervisor"):
+            cur.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'")
+            if cur.fetchone()["count"] <= 1:
+                raise HTTPException(status_code=400, detail="Impossible de retirer le rôle du dernier administrateur")
+        cur.execute(
+            f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            values,
+        )
+        return cur.fetchone()
+
+
+@app.delete("/users/{user_id}", status_code=204)
+def delete_user(user_id: int, user: dict = Depends(authmod.require_role("admin"))):
+    if user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Impossible de supprimer son propre compte")
+    with get_cursor() as cur:
+        cur.execute("SELECT id, role FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+        if target["role"] == "admin":
+            cur.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'")
+            if cur.fetchone()["count"] <= 1:
+                raise HTTPException(status_code=400, detail="Impossible de supprimer le dernier administrateur")
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    return None
 
 
 # ============ Équipements ============
@@ -196,6 +262,28 @@ def create_equipment(eq: EquipmentCreate,
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Erreur création: {e}")
         return cur.fetchone()
+
+
+@app.patch("/equipments/{equipment_id}", response_model=EquipmentOut)
+def update_equipment(equipment_id: int, payload: EquipmentUpdate,
+                     user: dict = Depends(authmod.require_role("admin", "technician"))):
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="Aucune modification fournie")
+    values = list(changes.values()) + [equipment_id]
+    assignments = ", ".join(f"{field} = %s" for field in changes)
+    with get_cursor() as cur:
+        try:
+            cur.execute(
+                f"UPDATE equipments SET {assignments} WHERE id = %s RETURNING *",
+                values,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Erreur modification: {e}")
+        equipment = cur.fetchone()
+        if equipment is None:
+            raise HTTPException(status_code=404, detail="Équipement introuvable")
+        return equipment
 
 
 @app.delete("/equipments/{equipment_id}", status_code=204)

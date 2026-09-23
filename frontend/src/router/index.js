@@ -6,6 +6,8 @@ import DashboardView from '../views/DashboardView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import ThresholdsView from '../views/ThresholdsView.vue'
 import GrafanaView from '../views/GrafanaView.vue'
+import UsersView from '../views/UsersView.vue'
+import AccountView from '../views/AccountView.vue'
 
 const routes = [
   { path: '/login', component: LoginView, meta: { public: true } },
@@ -13,6 +15,8 @@ const routes = [
   { path: '/history', component: HistoryView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
   { path: '/thresholds', component: ThresholdsView, meta: { roles: ['admin'] } },
   { path: '/grafana', component: GrafanaView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
+  { path: '/users', component: UsersView, meta: { roles: ['admin'] } },
+  { path: '/account', component: AccountView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
 ]
 
 const router = createRouter({

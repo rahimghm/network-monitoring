@@ -4,7 +4,7 @@ import EquipmentForm from '../components/EquipmentForm.vue'
 import EquipmentList from '../components/EquipmentList.vue'
 import EquipmentPanel from '../components/EquipmentPanel.vue'
 import SessionControls from '../components/SessionControls.vue'
-import { listEquipments, createEquipment, deleteEquipment, listThresholds, diagnoseEquipment, getRole } from '../api.js'
+import { listEquipments, createEquipment, updateEquipment, deleteEquipment, listThresholds, diagnoseEquipment, getRole } from '../api.js'
 import { useDiagnosisSession } from '../composables/useDiagnosisSession.js'
 import { computeBreaches } from '../thresholds.js'
 import { pushToast } from '../toasts.js'
@@ -40,9 +40,29 @@ async function handleCreate(payload) {
 }
 
 async function handleDelete(eq) {
-  await deleteEquipment(eq.id)
-  selectedIds.value = selectedIds.value.filter(id => id !== eq.id)
-  await refresh()
+  if (!window.confirm(`Supprimer l'équipement « ${eq.name} » ?`)) return
+  try {
+    await deleteEquipment(eq.id)
+    selectedIds.value = selectedIds.value.filter(id => id !== eq.id)
+    await refresh()
+    pushToast('Équipement supprimé.', 'success')
+  } catch (e) {
+    pushToast(e.response?.data?.detail || 'Échec de la suppression.', 'alert')
+  }
+}
+
+async function handleUpdate({ id, ...payload }) {
+  if (!payload.name || !payload.hostname) {
+    pushToast('Le nom et le hostname sont requis.', 'alert')
+    return
+  }
+  try {
+    await updateEquipment(id, payload)
+    await refresh()
+    pushToast('Équipement modifié.', 'success')
+  } catch (e) {
+    pushToast(e.response?.data?.detail || 'Échec de la modification.', 'alert')
+  }
 }
 
 async function handleStart() {
@@ -110,6 +130,7 @@ onUnmounted(() => stop())
           v-model:selected-ids="selectedIds"
           :read-only="isSupervisor"
           @delete="handleDelete"
+          @update="handleUpdate"
         />
       </aside>
 
