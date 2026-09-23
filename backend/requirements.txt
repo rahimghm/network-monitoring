@@ -1,0 +1,19 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+psycopg2-binary==2.9.9
+pysnmp==4.4.12
+pyasn1==0.4.8
+pyasn1-modules==0.2.8
+pydantic==2.9.2
+python-dotenv==1.0.1
+apscheduler==3.10.4
+
+# Auth & RBAC (Feature 5)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.9
+
+# Export snapshots (Feature 3)
+openpyxl==3.1.5
+reportlab==4.2.5
