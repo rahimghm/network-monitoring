@@ -49,11 +49,22 @@ def run_diagnostic(equipment_id: int, hostname: str, community: str) -> dict:
             cur.execute(
                 """INSERT INTO interface_metrics
                    (diagnostic_id, if_index, if_descr, oper_status, admin_status,
-                    speed_bps, in_octets, out_octets)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    speed_bps, in_octets, out_octets, in_packets, out_packets,
+                    in_errors, out_errors, in_discards, out_discards, stp_state)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (diagnostic_id, iface["if_index"], iface["if_descr"],
                  iface["oper_status"], iface["admin_status"], iface["speed_bps"],
-                 iface["in_octets"], iface["out_octets"])
+                 iface["in_octets"], iface["out_octets"], iface["in_packets"],
+                 iface["out_packets"], iface["in_errors"], iface["out_errors"],
+                 iface["in_discards"], iface["out_discards"], iface["stp_state"])
+            )
+        for mac in data["mac_table"]:
+            cur.execute(
+                """INSERT INTO mac_table_entries
+                   (diagnostic_id, mac_address, bridge_port, if_index, if_descr, status)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (diagnostic_id, mac["mac_address"], mac["bridge_port"], mac["if_index"],
+                 mac["if_descr"], mac["status"])
             )
         conn.commit()
 
@@ -320,6 +331,8 @@ def get_equipment_history(equipment_id: int, limit: int = 20):
         for d in diagnostics:
             cur.execute("SELECT * FROM interface_metrics WHERE diagnostic_id = %s", (d["id"],))
             d["interfaces"] = cur.fetchall()
+            cur.execute("SELECT * FROM mac_table_entries WHERE diagnostic_id = %s", (d["id"],))
+            d["mac_table"] = cur.fetchall()
             out.append(d)
         return out
 
@@ -469,6 +482,8 @@ def get_snapshot(snapshot_id: int, user: dict = Depends(authmod.get_current_user
         for d in diagnostics:
             cur.execute("SELECT * FROM interface_metrics WHERE diagnostic_id = %s", (d["id"],))
             d["interfaces"] = cur.fetchall()
+            cur.execute("SELECT * FROM mac_table_entries WHERE diagnostic_id = %s", (d["id"],))
+            d["mac_table"] = cur.fetchall()
 
     return {**snapshot, "diagnostics": diagnostics}
 
@@ -481,14 +496,40 @@ def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.get_curr
     wb = Workbook()
     ws = wb.active
     ws.title = "Snapshot"
-    ws.append(["Équipement ID", "Statut", "CPU %", "RAM utilisée (kB)", "RAM totale (kB)",
-               "Température °C", "Relevé le"])
+    ws.append(["Équipement ID", "Statut", "IP", "Description", "Uptime (centisecondes)",
+               "CPU %", "RAM utilisée (kB)", "RAM totale (kB)", "Température °C",
+               "Erreur", "Relevé le"])
     for d in detail["diagnostics"]:
         ws.append([
-            d["equipment_id"], "UP" if d["is_up"] else "DOWN", d["cpu_usage"],
-            d["ram_used_kb"], d["ram_total_kb"], d["temperature_c"],
+            d["equipment_id"], "UP" if d["is_up"] else "DOWN", d["resolved_ip"],
+            d["sys_descr"], d["sys_uptime"], d["cpu_usage"], d["ram_used_kb"],
+            d["ram_total_kb"], d["temperature_c"], d["error_message"],
             d["collected_at"].strftime("%Y-%m-%d %H:%M:%S"),
         ])
+
+    interfaces = wb.create_sheet("Interfaces")
+    interfaces.append([
+        "Équipement ID", "Index", "Interface", "Admin", "Opérationnel", "STP",
+        "Vitesse (bps)", "Entrée octets", "Sortie octets", "Entrée paquets",
+        "Sortie paquets", "Entrée erreurs", "Sortie erreurs", "Entrée rejets", "Sortie rejets",
+    ])
+    for d in detail["diagnostics"]:
+        for iface in d["interfaces"]:
+            interfaces.append([
+                d["equipment_id"], iface["if_index"], iface["if_descr"], iface["admin_status"],
+                iface["oper_status"], iface["stp_state"], iface["speed_bps"], iface["in_octets"],
+                iface["out_octets"], iface["in_packets"], iface["out_packets"], iface["in_errors"],
+                iface["out_errors"], iface["in_discards"], iface["out_discards"],
+            ])
+
+    mac_table = wb.create_sheet("MAC Table")
+    mac_table.append(["Équipement ID", "MAC", "Bridge port", "Interface index", "Interface", "Statut"])
+    for d in detail["diagnostics"]:
+        for mac in d["mac_table"]:
+            mac_table.append([
+                d["equipment_id"], mac["mac_address"], mac["bridge_port"], mac["if_index"],
+                mac["if_descr"], mac["status"],
+            ])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -503,23 +544,25 @@ def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.get_curr
 @app.get("/snapshots/{snapshot_id}/export/pdf")
 def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.get_current_user)):
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
 
     detail = get_snapshot(snapshot_id, user)
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=24, leftMargin=24)
     styles = getSampleStyleSheet()
 
     elements = [Paragraph(f"Snapshot : {detail['label']}", styles["Title"]), Spacer(1, 12)]
 
-    data = [["Équipement", "Statut", "CPU %", "RAM (kB)", "Temp °C", "Relevé le"]]
+    data = [["Équipement", "Statut", "IP", "Uptime (cs)", "CPU %", "RAM (kB)",
+             "Temp °C", "Erreur", "Relevé le"]]
     for d in detail["diagnostics"]:
         data.append([
-            str(d["equipment_id"]), "UP" if d["is_up"] else "DOWN",
-            str(d["cpu_usage"]), f"{d['ram_used_kb']}/{d['ram_total_kb']}",
-            str(d["temperature_c"]), d["collected_at"].strftime("%Y-%m-%d %H:%M:%S"),
+            str(d["equipment_id"]), "UP" if d["is_up"] else "DOWN", str(d["resolved_ip"] or ""),
+            str(d["sys_uptime"]), str(d["cpu_usage"]), f"{d['ram_used_kb']}/{d['ram_total_kb']}",
+            str(d["temperature_c"]), str(d["error_message"] or ""),
+            d["collected_at"].strftime("%Y-%m-%d %H:%M:%S"),
         ])
 
     table = Table(data)
@@ -530,6 +573,46 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.get_curre
         ("FONTSIZE", (0, 0), (-1, -1), 9),
     ]))
     elements.append(table)
+
+    for d in detail["diagnostics"]:
+        elements.append(Spacer(1, 14))
+        elements.append(Paragraph(f"Équipement {d['equipment_id']} - Interfaces", styles["Heading3"]))
+        interface_data = [[
+            "Index", "Interface", "Admin", "Op", "STP", "Vitesse", "In octets", "Out octets",
+            "In paquets", "Out paquets", "In erreurs", "Out erreurs", "In rejets", "Out rejets",
+        ]]
+        for iface in d["interfaces"]:
+            interface_data.append([
+                str(iface["if_index"]), str(iface["if_descr"] or ""), str(iface["admin_status"] or ""),
+                str(iface["oper_status"] or ""), str(iface["stp_state"] or ""), str(iface["speed_bps"] or ""),
+                str(iface["in_octets"] or ""), str(iface["out_octets"] or ""), str(iface["in_packets"] or ""),
+                str(iface["out_packets"] or ""), str(iface["in_errors"] or ""), str(iface["out_errors"] or ""),
+                str(iface["in_discards"] or ""), str(iface["out_discards"] or ""),
+            ])
+        interface_table = Table(interface_data, repeatRows=1, colWidths=[30, 80, 45, 45, 50, 55, 55, 55, 55, 55, 50, 50, 50, 50])
+        interface_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b6fed")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(interface_table)
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph("MAC table", styles["Heading4"]))
+        mac_data = [["MAC", "Bridge port", "Interface index", "Interface", "Statut"]]
+        for mac in d["mac_table"]:
+            mac_data.append([
+                mac["mac_address"], str(mac["bridge_port"] or ""), str(mac["if_index"] or ""),
+                str(mac["if_descr"] or ""), str(mac["status"] or ""),
+            ])
+        mac_table = Table(mac_data, repeatRows=1)
+        mac_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b6fed")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(mac_table)
     doc.build(elements)
     buffer.seek(0)
 

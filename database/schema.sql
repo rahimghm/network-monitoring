@@ -45,11 +45,39 @@ CREATE TABLE IF NOT EXISTS interface_metrics (
     speed_bps BIGINT,
     in_octets BIGINT,
     out_octets BIGINT,
+    in_packets BIGINT,
+    out_packets BIGINT,
+    in_errors BIGINT,
+    out_errors BIGINT,
+    in_discards BIGINT,
+    out_discards BIGINT,
+    stp_state VARCHAR(20),
+    collected_at TIMESTAMP DEFAULT now()
+);
+
+-- Migration for databases created before the extended interface metrics.
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS in_packets BIGINT;
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS out_packets BIGINT;
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS in_errors BIGINT;
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS out_errors BIGINT;
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS in_discards BIGINT;
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS out_discards BIGINT;
+ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS stp_state VARCHAR(20);
+
+CREATE TABLE IF NOT EXISTS mac_table_entries (
+    id SERIAL PRIMARY KEY,
+    diagnostic_id INTEGER REFERENCES diagnostics(id) ON DELETE CASCADE,
+    mac_address VARCHAR(17) NOT NULL,
+    bridge_port INTEGER,
+    if_index INTEGER,
+    if_descr VARCHAR(150),
+    status VARCHAR(20),
     collected_at TIMESTAMP DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_diagnostics_equipment ON diagnostics(equipment_id);
 CREATE INDEX IF NOT EXISTS idx_interface_diagnostic ON interface_metrics(diagnostic_id);
+CREATE INDEX IF NOT EXISTS idx_mac_diagnostic ON mac_table_entries(diagnostic_id);
 
 -- ========== Alertes (Feature 4) ==========
 -- equipment_id NULL = seuil global (s'applique à tout équipement sans override)

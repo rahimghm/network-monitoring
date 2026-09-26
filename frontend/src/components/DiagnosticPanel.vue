@@ -34,6 +34,10 @@ function formatUptime(seconds100) {
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   return `${days}j ${hours}h ${minutes}m`
 }
+
+function formatCounter(value) {
+  return value == null ? '—' : value.toLocaleString('fr-FR')
+}
 </script>
 
 <template>
@@ -94,24 +98,62 @@ function formatUptime(seconds100) {
           <thead>
             <tr>
               <th>Port</th>
+              <th>Admin</th>
               <th>Statut</th>
+              <th>STP</th>
               <th>Vitesse</th>
-              <th>Trafic entrant</th>
-              <th>Trafic sortant</th>
+              <th>Octets entrants</th>
+              <th>Octets sortants</th>
+              <th>Paquets entrants</th>
+              <th>Paquets sortants</th>
+              <th>Erreurs entrantes</th>
+              <th>Erreurs sortantes</th>
+              <th>Rejets entrants</th>
+              <th>Rejets sortants</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="iface in diagnostic.interfaces" :key="iface.if_index">
               <td>{{ iface.if_descr || `#${iface.if_index}` }}</td>
+              <td>{{ iface.admin_status || '—' }}</td>
               <td>
                 <span class="if-status" :class="iface.oper_status">{{ iface.oper_status }}</span>
               </td>
+              <td>{{ iface.stp_state || '—' }}</td>
               <td>{{ formatSpeed(iface.speed_bps) }}</td>
-              <td>{{ formatOctets(iface.in_octets) }}</td>
-              <td>{{ formatOctets(iface.out_octets) }}</td>
+              <td>{{ formatCounter(iface.in_octets) }}</td>
+              <td>{{ formatCounter(iface.out_octets) }}</td>
+              <td>{{ formatCounter(iface.in_packets) }}</td>
+              <td>{{ formatCounter(iface.out_packets) }}</td>
+              <td>{{ formatCounter(iface.in_errors) }}</td>
+              <td>{{ formatCounter(iface.out_errors) }}</td>
+              <td>{{ formatCounter(iface.in_discards) }}</td>
+              <td>{{ formatCounter(iface.out_discards) }}</td>
             </tr>
           </tbody>
         </table>
+
+        <template v-if="diagnostic.mac_table?.length">
+          <h3>Table MAC ({{ diagnostic.mac_table.length }})</h3>
+          <table class="if-table">
+            <thead>
+              <tr>
+                <th>MAC</th>
+                <th>Port bridge</th>
+                <th>Interface</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="entry in diagnostic.mac_table" :key="`${entry.mac_address}-${entry.bridge_port}`">
+                <td class="mac-address">{{ entry.mac_address }}</td>
+                <td>{{ entry.bridge_port ?? '—' }}</td>
+                <td>{{ entry.if_descr || (entry.if_index != null ? `#${entry.if_index}` : '—') }}</td>
+                <td>{{ entry.status || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
       </template>
     </div>
   </div>
@@ -197,6 +239,7 @@ h3 { font-size: 14px; margin: 0 0 10px; color: #1a1d23; }
   border-bottom: 1px solid #f0f1f4;
   color: #1a1d23;
 }
+.mac-address { font-family: monospace; }
 .if-status {
   padding: 2px 8px;
   border-radius: 12px;

@@ -39,11 +39,22 @@ def _save_diagnostic(equipment_id: int, data: dict) -> tuple:
             cur.execute(
                 """INSERT INTO interface_metrics
                    (diagnostic_id, if_index, if_descr, oper_status, admin_status,
-                    speed_bps, in_octets, out_octets)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    speed_bps, in_octets, out_octets, in_packets, out_packets,
+                    in_errors, out_errors, in_discards, out_discards, stp_state)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (diagnostic_id, iface["if_index"], iface["if_descr"],
                  iface["oper_status"], iface["admin_status"], iface["speed_bps"],
-                 iface["in_octets"], iface["out_octets"])
+                 iface["in_octets"], iface["out_octets"], iface["in_packets"],
+                 iface["out_packets"], iface["in_errors"], iface["out_errors"],
+                 iface["in_discards"], iface["out_discards"], iface["stp_state"])
+            )
+        for mac in data["mac_table"]:
+            cur.execute(
+                """INSERT INTO mac_table_entries
+                   (diagnostic_id, mac_address, bridge_port, if_index, if_descr, status)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (diagnostic_id, mac["mac_address"], mac["bridge_port"], mac["if_index"],
+                 mac["if_descr"], mac["status"])
             )
         conn.commit()
     return diagnostic_id, collected_at

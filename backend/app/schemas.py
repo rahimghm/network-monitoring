@@ -33,6 +33,21 @@ class InterfaceMetricOut(BaseModel):
     speed_bps: Optional[int]
     in_octets: Optional[int]
     out_octets: Optional[int]
+    in_packets: Optional[int]
+    out_packets: Optional[int]
+    in_errors: Optional[int]
+    out_errors: Optional[int]
+    in_discards: Optional[int]
+    out_discards: Optional[int]
+    stp_state: Optional[str]
+
+
+class MacTableEntryOut(BaseModel):
+    mac_address: str
+    bridge_port: Optional[int]
+    if_index: Optional[int]
+    if_descr: Optional[str]
+    status: Optional[str]
 
 
 class DiagnosticOut(BaseModel):
@@ -49,6 +64,7 @@ class DiagnosticOut(BaseModel):
     error_message: Optional[str]
     collected_at: datetime
     interfaces: List[InterfaceMetricOut] = []
+    mac_table: List[MacTableEntryOut] = []
 
 
 class MetricPointOut(BaseModel):

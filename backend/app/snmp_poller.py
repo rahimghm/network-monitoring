@@ -24,6 +24,19 @@ OID_IF_OPER_STATUS = "1.3.6.1.2.1.2.2.1.8"
 OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"
 OID_IF_IN_OCTETS = "1.3.6.1.2.1.2.2.1.10"
 OID_IF_OUT_OCTETS = "1.3.6.1.2.1.2.2.1.16"
+OID_IF_IN_UCAST_PKTS = "1.3.6.1.2.1.2.2.1.11"
+OID_IF_IN_DISCARDS = "1.3.6.1.2.1.2.2.1.13"
+OID_IF_IN_ERRORS = "1.3.6.1.2.1.2.2.1.14"
+OID_IF_OUT_UCAST_PKTS = "1.3.6.1.2.1.2.2.1.17"
+OID_IF_OUT_DISCARDS = "1.3.6.1.2.1.2.2.1.19"
+OID_IF_OUT_ERRORS = "1.3.6.1.2.1.2.2.1.20"
+
+# --- BRIDGE-MIB (OVS bridge/FDB/STP) ---
+OID_DOT1D_BASE_PORT_IF_INDEX = "1.3.6.1.2.1.17.1.4.1.2"
+OID_DOT1D_TP_FDB_ADDRESS = "1.3.6.1.2.1.17.4.3.1.1"
+OID_DOT1D_TP_FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"
+OID_DOT1D_TP_FDB_STATUS = "1.3.6.1.2.1.17.4.3.1.3"
+OID_DOT1D_STP_PORT_STATE = "1.3.6.1.2.1.17.2.1.7"
 
 # --- OIDs UCD-SNMP-MIB (CPU / RAM), dispo par défaut sur net-snmp Linux ---
 OID_MEM_TOTAL = "1.3.6.1.4.1.2021.4.5.0"    # memTotalReal (kB)
@@ -36,6 +49,8 @@ OID_EXTEND_OUTPUT = "1.3.6.1.4.1.8072.1.3.2.4.1.2"  # nsExtendOutputFull table
 STATUS_MAP = {"1": "up", "2": "down", "3": "testing",
               "4": "unknown", "5": "dormant", "6": "notPresent",
               "7": "lowerLayerDown"}
+STP_STATE_MAP = {"1": "disabled", "2": "blocking", "3": "listening",
+                 "4": "learning", "5": "forwarding", "6": "broken"}
 
 # Un seul moteur SNMP réutilisé pour toutes les requêtes (évite le coût de
 # recréation à chaque appel, ~1s gagné par requête). Comme pysnmp.hlapi
@@ -110,6 +125,21 @@ def _walk_to_dict(ip: str, community: str, base_oid: str) -> dict:
     return out
 
 
+def _oid_index(oid_str: str, count: int) -> str:
+    """Retourne les derniers composants d'index d'un OID de table."""
+    return ".".join(oid_str.split(".")[-count:])
+
+
+def _format_mac_index(oid_str: str) -> Optional[str]:
+    try:
+        octets = [int(part) for part in _oid_index(oid_str, 6).split(".")]
+        if len(octets) != 6 or any(octet < 0 or octet > 255 for octet in octets):
+            return None
+        return ":".join(f"{octet:02x}" for octet in octets)
+    except ValueError:
+        return None
+
+
 def collect_diagnostics(hostname: str, community: str = "public") -> dict:
     """
     Résout le hostname puis interroge l'équipement en SNMP.
@@ -127,6 +157,7 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
         "temperature_c": None,
         "error_message": None,
         "interfaces": [],
+        "mac_table": [],
     }
 
     try:
@@ -147,9 +178,10 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
 
     uptime = _snmp_get(ip, community, OID_SYS_UPTIME)
     if uptime:
-        # format typique "(12345) 0:02:03.45" -> on garde les centièmes de secondes bruts
         try:
-            result["sys_uptime"] = int(uptime.split("(")[1].split(")")[0])
+            # sysUpTime is TimeTicks: hundredths of a second.
+            uptime_ticks = uptime.split("(")[1].split(")")[0] if "(" in uptime else uptime
+            result["sys_uptime"] = int(uptime_ticks.strip())
         except (IndexError, ValueError):
             result["sys_uptime"] = None
 
@@ -191,6 +223,20 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
     speed = _walk_to_dict(ip, community, OID_IF_SPEED)
     in_octets = _walk_to_dict(ip, community, OID_IF_IN_OCTETS)
     out_octets = _walk_to_dict(ip, community, OID_IF_OUT_OCTETS)
+    in_packets = _walk_to_dict(ip, community, OID_IF_IN_UCAST_PKTS)
+    out_packets = _walk_to_dict(ip, community, OID_IF_OUT_UCAST_PKTS)
+    in_errors = _walk_to_dict(ip, community, OID_IF_IN_ERRORS)
+    out_errors = _walk_to_dict(ip, community, OID_IF_OUT_ERRORS)
+    in_discards = _walk_to_dict(ip, community, OID_IF_IN_DISCARDS)
+    out_discards = _walk_to_dict(ip, community, OID_IF_OUT_DISCARDS)
+
+    bridge_port_if = _walk_to_dict(ip, community, OID_DOT1D_BASE_PORT_IF_INDEX)
+    stp_state_by_port = _walk_to_dict(ip, community, OID_DOT1D_STP_PORT_STATE)
+    stp_state_by_if = {
+        bridge_port_if[port]: STP_STATE_MAP.get(state, state)
+        for port, state in stp_state_by_port.items()
+        if port in bridge_port_if
+    }
 
     for idx in descr:
         result["interfaces"].append({
@@ -201,6 +247,30 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
             "speed_bps": int(speed[idx]) if idx in speed and speed[idx].isdigit() else None,
             "in_octets": int(in_octets[idx]) if idx in in_octets and in_octets[idx].isdigit() else None,
             "out_octets": int(out_octets[idx]) if idx in out_octets and out_octets[idx].isdigit() else None,
+            "in_packets": int(in_packets[idx]) if idx in in_packets and in_packets[idx].isdigit() else None,
+            "out_packets": int(out_packets[idx]) if idx in out_packets and out_packets[idx].isdigit() else None,
+            "in_errors": int(in_errors[idx]) if idx in in_errors and in_errors[idx].isdigit() else None,
+            "out_errors": int(out_errors[idx]) if idx in out_errors and out_errors[idx].isdigit() else None,
+            "in_discards": int(in_discards[idx]) if idx in in_discards and in_discards[idx].isdigit() else None,
+            "out_discards": int(out_discards[idx]) if idx in out_discards and out_discards[idx].isdigit() else None,
+            "stp_state": stp_state_by_if.get(idx),
+        })
+
+    fdb_ports = { _oid_index(oid, 6): value for oid, value in _snmp_walk(ip, community, OID_DOT1D_TP_FDB_PORT) }
+    fdb_statuses = { _oid_index(oid, 6): value for oid, value in _snmp_walk(ip, community, OID_DOT1D_TP_FDB_STATUS) }
+    for fdb_oid, _ in _snmp_walk(ip, community, OID_DOT1D_TP_FDB_ADDRESS):
+        fdb_index = _oid_index(fdb_oid, 6)
+        mac_address = _format_mac_index(fdb_oid)
+        bridge_port = fdb_ports.get(fdb_index)
+        if mac_address is None or bridge_port is None:
+            continue
+        if_index = bridge_port_if.get(bridge_port)
+        result["mac_table"].append({
+            "mac_address": mac_address,
+            "bridge_port": int(bridge_port) if bridge_port.isdigit() else None,
+            "if_index": int(if_index) if if_index and if_index.isdigit() else None,
+            "if_descr": descr.get(if_index) if if_index else None,
+            "status": fdb_statuses.get(fdb_index),
         })
 
     return result
