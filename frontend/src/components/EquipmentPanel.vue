@@ -6,6 +6,7 @@ const props = defineProps({
   equipment: { type: Object, required: true },
   diagnostic: { type: Object, default: null },
   isDiagnosing: { type: Boolean, default: false },
+  canDiagnose: { type: Boolean, default: true },
   breaches: { type: Object, default: () => ({ cpu_usage: false, ram_percent: false, temperature_c: false }) }
 })
 
@@ -20,7 +21,7 @@ const emit = defineEmits(['close', 'diagnose'])
         <span class="title">{{ equipment.name }}</span>
       </div>
       <div class="header-actions">
-        <button class="mini-btn" :disabled="isDiagnosing" @click="emit('diagnose', equipment)">
+        <button v-if="canDiagnose" class="mini-btn" :disabled="isDiagnosing" @click="emit('diagnose', equipment)">
           {{ isDiagnosing ? '...' : 'Re-diagnostiquer' }}
         </button>
         <button class="close-btn" @click="emit('close', equipment.id)" title="Fermer ce panneau">✕</button>
@@ -35,7 +36,7 @@ const emit = defineEmits(['close', 'diagnose'])
 <style scoped>
 .panel-card {
   background: #fff;
-  border: 1px solid #e2e5ea;
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 16px;
 }
@@ -58,8 +59,8 @@ const emit = defineEmits(['close', 'diagnose'])
 .header-actions { display: flex; gap: 6px; }
 .mini-btn {
   padding: 4px 10px;
-  background: #eef2fe;
-  color: #3b6fed;
+  background: var(--brand-green-soft);
+  color: var(--brand-green-dark);
   border: none;
   border-radius: 6px;
   font-size: 12px;
@@ -70,7 +71,7 @@ const emit = defineEmits(['close', 'diagnose'])
   padding: 4px 8px;
   background: transparent;
   color: #888;
-  border: 1px solid #e2e5ea;
+  border: 1px solid var(--line);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;

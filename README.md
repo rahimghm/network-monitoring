@@ -88,10 +88,16 @@ Ouvre `http://localhost:5173`.
    ou ajoute une page si besoin)
 
 **Rôles :**
-- **Admin** : tout, y compris gérer les utilisateurs et les seuils d'alerte
-- **Technician** : ajouter/supprimer des équipements, lancer des diagnostics,
-  prendre des snapshots, consulter l'historique
-- **Supervisor** : lecture seule (dashboard et historique) + export
+- **Admin** : accès complet à toutes les actions
+- **Supervisor** : accès complet sauf administration des utilisateurs et journal
+  d'audit
+- **Technician** : mêmes droits que Supervisor, sauf ajout/modification/suppression
+  des équipements et des seuils; la suppression des snapshots lui est également
+  interdite
+
+Les trois rôles peuvent contrôler le polling (démarrer, mettre en pause,
+reprendre, arrêter) et créer des snapshots. Les contrôles sont protégés côté API;
+les restrictions d'interface ne remplacent pas le RBAC backend.
 
 ## 5. Utilisation — diagnostic multi-équipements en temps réel
 
@@ -129,7 +135,7 @@ réseau, sans corruption de réponse.
 
 ## 7. Alertes (seuils configurables)
 
-Va dans **Alertes** (Admin uniquement) pour définir des seuils — globaux
+Va dans **Alertes** (Admin ou Supervisor) pour définir des seuils — globaux
 (tous équipements) ou spécifiques à un équipement — sur CPU (%), RAM (%) ou
 température (°C), avec condition "supérieur à" / "inférieur à".
 

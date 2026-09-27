@@ -49,14 +49,6 @@ def _save_diagnostic(equipment_id: int, data: dict) -> tuple:
                  iface["out_packets"], iface["in_errors"], iface["out_errors"],
                  iface["in_discards"], iface["out_discards"], iface["stp_state"])
             )
-        for mac in data["mac_table"]:
-            cur.execute(
-                """INSERT INTO mac_table_entries
-                   (diagnostic_id, mac_address, bridge_port, if_index, if_descr, status)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
-                (diagnostic_id, mac["mac_address"], mac["bridge_port"], mac["if_index"],
-                 mac["if_descr"], mac["status"])
-            )
         conn.commit()
     return diagnostic_id, collected_at
 
@@ -178,6 +170,21 @@ class MonitoringHub:
                        VALUES (%s,%s,%s)""",
                     (snapshot_id, equipment_id, diagnostic_id)
                 )
+                cur.execute(
+                    """SELECT collected_at, cpu_usage, ram_total_kb, ram_used_kb, is_up
+                       FROM diagnostics
+                       WHERE equipment_id = %s AND id <= %s
+                       ORDER BY collected_at DESC LIMIT 50""",
+                    (equipment_id, diagnostic_id),
+                )
+                for metric in cur.fetchall():
+                    cur.execute(
+                        """INSERT INTO snapshot_metrics
+                           (snapshot_id, equipment_id, collected_at, cpu_usage,
+                            ram_total_kb, ram_used_kb, is_up)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                        (snapshot_id, equipment_id, *metric),
+                    )
             conn.commit()
         return snapshot_id
 

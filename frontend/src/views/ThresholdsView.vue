@@ -5,7 +5,7 @@ import { pushToast } from '../toasts.js'
 
 const thresholds = ref([])
 const equipments = ref([])
-const isAdmin = getRole() === 'admin'
+const canManageThresholds = ['admin', 'supervisor'].includes(getRole())
 
 const form = ref({
   equipment_id: '',   // '' = global
@@ -49,7 +49,7 @@ onMounted(refresh)
 
 <template>
   <div class="thresholds-page">
-    <form v-if="isAdmin" class="threshold-form" @submit.prevent="submit">
+    <form v-if="canManageThresholds" class="threshold-form" @submit.prevent="submit">
       <h2>Ajouter un seuil</h2>
       <div class="row">
         <select v-model="form.equipment_id">
@@ -75,7 +75,7 @@ onMounted(refresh)
       <table>
         <thead>
           <tr>
-            <th>Équipement</th><th>Métrique</th><th>Condition</th><th>Statut</th><th v-if="isAdmin"></th>
+            <th>Équipement</th><th>Métrique</th><th>Condition</th><th>Statut</th><th v-if="canManageThresholds"></th>
           </tr>
         </thead>
         <tbody>
@@ -84,7 +84,7 @@ onMounted(refresh)
             <td>{{ t.metric }}</td>
             <td>{{ t.operator === 'gt' ? '>' : '<' }} {{ t.threshold_value }}</td>
             <td>{{ t.enabled ? 'Actif' : 'Désactivé' }}</td>
-            <td v-if="isAdmin"><button class="delete-btn" @click="remove(t.id)">✕</button></td>
+            <td v-if="canManageThresholds"><button class="delete-btn" @click="remove(t.id)">✕</button></td>
           </tr>
         </tbody>
       </table>
@@ -110,7 +110,7 @@ select, input {
 }
 button[type="submit"] {
   padding: 7px 14px;
-  background: #3b6fed;
+  background: var(--brand-green);
   color: #fff;
   border: none;
   border-radius: 6px;

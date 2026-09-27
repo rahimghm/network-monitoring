@@ -144,7 +144,7 @@ onMounted(refresh)
 .users-page { color: #1a1d23; }
 .page-heading, .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .page-heading { margin-bottom: 20px; }
-.eyebrow { margin: 0 0 4px; color: #3b6fed; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 4px; color: var(--brand-green); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 h2 { margin: 0; font-size: 22px; }
 h3 { margin: 0 0 14px; font-size: 15px; }
 .count, .muted { color: #777f8d; font-size: 13px; }
@@ -153,13 +153,13 @@ h3 { margin: 0 0 14px; font-size: 15px; }
 label { display: grid; gap: 6px; color: #656d79; font-size: 12px; font-weight: 600; }
 input, select { width: 100%; padding: 8px 10px; border: 1px solid #d5d9e0; border-radius: 6px; background: #fff; color: #1a1d23; font: inherit; font-size: 13px; }
 button { padding: 8px 12px; border-radius: 6px; border: 0; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.form-row button, .save-btn { background: #3b6fed; color: #fff; }
+.form-row button, .save-btn { background: var(--brand-green); color: #fff; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { padding: 9px 8px; border-bottom: 1px solid #e2e5ea; color: #858b95; font-size: 11px; font-weight: 700; text-align: left; text-transform: uppercase; }
 td { padding: 11px 8px; border-bottom: 1px solid #f0f1f4; vertical-align: middle; }
 .username { font-weight: 600; }
-.role-label { display: inline-block; padding: 4px 8px; border-radius: 12px; background: #eef2fe; color: #3b6fed; font-size: 11px; text-transform: capitalize; }
+.role-label { display: inline-block; padding: 4px 8px; border-radius: 12px; background: var(--brand-green-soft); color: var(--brand-green-dark); font-size: 11px; text-transform: capitalize; }
 .role-label.admin { background: #fff1df; color: #a76111; }
 .role-label.supervisor { background: #e7f6ef; color: #23734b; }
 .actions-column { width: 330px; }

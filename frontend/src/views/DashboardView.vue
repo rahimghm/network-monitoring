@@ -13,7 +13,9 @@ const equipments = ref([])
 const selectedIds = ref([])
 const loadError = ref(null)
 const thresholds = ref([])
-const isSupervisor = getRole() === 'supervisor'
+const role = getRole()
+const canManageEquipment = role === 'admin' || role === 'supervisor'
+const canDiagnose = role !== 'technician'
 
 const { liveData, status, connect, disconnect, snapshot: doSnapshot, start, pause, resume, stop } = useDiagnosisSession()
 
@@ -113,12 +115,10 @@ function breachesFor(id) {
 onMounted(async () => {
   await refresh()
   await loadThresholds()
-  if (isSupervisor) {
-    try { await connect() } catch (e) { pushToast('Connexion au flux live impossible.', 'alert') }
-  }
+  try { await connect() } catch (e) { pushToast('Connexion au flux live impossible.', 'alert') }
 })
 
-onUnmounted(() => isSupervisor ? disconnect() : stop())
+onUnmounted(() => disconnect())
 </script>
 
 <template>
@@ -127,11 +127,12 @@ onUnmounted(() => isSupervisor ? disconnect() : stop())
 
     <div class="layout">
       <aside>
-        <EquipmentForm v-if="!isSupervisor" @created="handleCreate" />
+        <EquipmentForm v-if="canManageEquipment" @created="handleCreate" />
         <EquipmentList
           :equipments="equipments"
           v-model:selected-ids="selectedIds"
-          :read-only="isSupervisor"
+          :read-only="!canManageEquipment"
+          :can-select="true"
           @delete="handleDelete"
           @update="handleUpdate"
         />
@@ -139,7 +140,6 @@ onUnmounted(() => isSupervisor ? disconnect() : stop())
 
       <main>
         <SessionControls
-          v-if="!isSupervisor"
           :selected-count="selectedIds.length"
           :status="status"
           @start="handleStart"
@@ -148,11 +148,6 @@ onUnmounted(() => isSupervisor ? disconnect() : stop())
           @stop="stop"
           @snapshot="handleSnapshot"
         />
-        <p v-else class="supervisor-note">
-          Accès superviseur : lecture seule. Les diagnostics affichés sont ceux
-          déjà en cours ou déjà enregistrés en base.
-        </p>
-
         <p v-if="openPanelIds.length === 0" class="placeholder-main">
           Sélectionne un ou plusieurs équipements puis clique sur "Démarrer" pour lancer
           un diagnostic en temps réel (toutes les 5s), simultané pour chacun.
@@ -165,6 +160,7 @@ onUnmounted(() => isSupervisor ? disconnect() : stop())
             :equipment="equipmentById(id)"
             :diagnostic="liveData[id] || null"
             :breaches="breachesFor(id)"
+            :can-diagnose="canDiagnose"
             @close="handleClosePanel"
             @diagnose="handleManualDiagnose"
           />
@@ -185,7 +181,7 @@ onUnmounted(() => isSupervisor ? disconnect() : stop())
 }
 .layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }

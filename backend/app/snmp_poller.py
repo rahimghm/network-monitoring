@@ -31,11 +31,8 @@ OID_IF_OUT_UCAST_PKTS = "1.3.6.1.2.1.2.2.1.17"
 OID_IF_OUT_DISCARDS = "1.3.6.1.2.1.2.2.1.19"
 OID_IF_OUT_ERRORS = "1.3.6.1.2.1.2.2.1.20"
 
-# --- BRIDGE-MIB (OVS bridge/FDB/STP) ---
+# --- BRIDGE-MIB (STP) ---
 OID_DOT1D_BASE_PORT_IF_INDEX = "1.3.6.1.2.1.17.1.4.1.2"
-OID_DOT1D_TP_FDB_ADDRESS = "1.3.6.1.2.1.17.4.3.1.1"
-OID_DOT1D_TP_FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"
-OID_DOT1D_TP_FDB_STATUS = "1.3.6.1.2.1.17.4.3.1.3"
 OID_DOT1D_STP_PORT_STATE = "1.3.6.1.2.1.17.2.1.7"
 
 # --- OIDs UCD-SNMP-MIB (CPU / RAM), dispo par défaut sur net-snmp Linux ---
@@ -125,21 +122,6 @@ def _walk_to_dict(ip: str, community: str, base_oid: str) -> dict:
     return out
 
 
-def _oid_index(oid_str: str, count: int) -> str:
-    """Retourne les derniers composants d'index d'un OID de table."""
-    return ".".join(oid_str.split(".")[-count:])
-
-
-def _format_mac_index(oid_str: str) -> Optional[str]:
-    try:
-        octets = [int(part) for part in _oid_index(oid_str, 6).split(".")]
-        if len(octets) != 6 or any(octet < 0 or octet > 255 for octet in octets):
-            return None
-        return ":".join(f"{octet:02x}" for octet in octets)
-    except ValueError:
-        return None
-
-
 def collect_diagnostics(hostname: str, community: str = "public") -> dict:
     """
     Résout le hostname puis interroge l'équipement en SNMP.
@@ -157,7 +139,6 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
         "temperature_c": None,
         "error_message": None,
         "interfaces": [],
-        "mac_table": [],
     }
 
     try:
@@ -254,23 +235,6 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
             "in_discards": int(in_discards[idx]) if idx in in_discards and in_discards[idx].isdigit() else None,
             "out_discards": int(out_discards[idx]) if idx in out_discards and out_discards[idx].isdigit() else None,
             "stp_state": stp_state_by_if.get(idx),
-        })
-
-    fdb_ports = { _oid_index(oid, 6): value for oid, value in _snmp_walk(ip, community, OID_DOT1D_TP_FDB_PORT) }
-    fdb_statuses = { _oid_index(oid, 6): value for oid, value in _snmp_walk(ip, community, OID_DOT1D_TP_FDB_STATUS) }
-    for fdb_oid, _ in _snmp_walk(ip, community, OID_DOT1D_TP_FDB_ADDRESS):
-        fdb_index = _oid_index(fdb_oid, 6)
-        mac_address = _format_mac_index(fdb_oid)
-        bridge_port = fdb_ports.get(fdb_index)
-        if mac_address is None or bridge_port is None:
-            continue
-        if_index = bridge_port_if.get(bridge_port)
-        result["mac_table"].append({
-            "mac_address": mac_address,
-            "bridge_port": int(bridge_port) if bridge_port.isdigit() else None,
-            "if_index": int(if_index) if if_index and if_index.isdigit() else None,
-            "if_descr": descr.get(if_index) if if_index else None,
-            "status": fdb_statuses.get(fdb_index),
         })
 
     return result

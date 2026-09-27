@@ -4,7 +4,8 @@ import { computed, ref } from 'vue'
 const props = defineProps({
   equipments: { type: Array, required: true },
   selectedIds: { type: Array, default: () => [] },
-  readOnly: { type: Boolean, default: false }
+  readOnly: { type: Boolean, default: false },
+  canSelect: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['update:selectedIds', 'delete', 'update'])
@@ -46,7 +47,7 @@ function saveEditing() {
   <div class="equip-list">
     <div class="list-header">
       <h2>Équipements ({{ equipments.length }})</h2>
-      <label class="select-all" v-if="equipments.length && !readOnly">
+      <label class="select-all" v-if="equipments.length && canSelect">
         <input type="checkbox" :checked="allSelected" @change="toggleAll" />
         Tout sélectionner
       </label>
@@ -56,7 +57,7 @@ function saveEditing() {
 
     <div v-for="eq in equipments" :key="eq.id" class="equip-row">
       <input
-        v-if="!readOnly"
+        v-if="canSelect"
         type="checkbox"
         :checked="selectedIds.includes(eq.id)"
         @change="toggleOne(eq.id)"
@@ -92,7 +93,7 @@ function saveEditing() {
 <style scoped>
 .equip-list {
   background: #fff;
-  border: 1px solid #e2e5ea;
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 20px;
 }
@@ -127,8 +128,8 @@ function saveEditing() {
 .hostname { font-size: 12px; color: #888; }
 
 .actions { position: relative; }
-.more-btn { padding: 3px 8px; background: transparent; color: #666; border: 1px solid #e2e5ea; border-radius: 6px; cursor: pointer; font-weight: 700; letter-spacing: 2px; }
-.action-menu { position: absolute; right: 0; top: 30px; z-index: 5; min-width: 120px; padding: 4px; background: #fff; border: 1px solid #e2e5ea; border-radius: 6px; box-shadow: 0 5px 14px rgba(25, 32, 45, .12); }
+.more-btn { padding: 3px 8px; background: transparent; color: #666; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-weight: 700; letter-spacing: 2px; }
+.action-menu { position: absolute; right: 0; top: 30px; z-index: 5; min-width: 120px; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 5px 14px rgba(25, 32, 45, .12); }
 .action-menu button { display: block; width: 100%; padding: 7px 9px; background: transparent; border: 0; border-radius: 4px; color: #444; text-align: left; cursor: pointer; font-size: 12px; }
 .action-menu button:hover { background: #f5f7fa; }
 .action-menu .danger-action { color: #c03932; }
@@ -136,7 +137,7 @@ function saveEditing() {
 .edit-fields input { min-width: 0; padding: 6px 7px; border: 1px solid #d5d9e0; border-radius: 5px; font-size: 12px; }
 .edit-actions { display: flex; align-items: center; gap: 4px; grid-column: 1 / -1; }
 .edit-actions button { padding: 5px 8px; border: 0; border-radius: 5px; cursor: pointer; font-size: 11px; }
-.save-btn { background: #3b6fed; color: #fff; }
+.save-btn { background: var(--brand-green); color: #fff; }
 .cancel-btn { background: #f0f1f4; color: #555; }
 @media (max-width: 600px) { .edit-fields { grid-template-columns: 1fr; } }
 </style>

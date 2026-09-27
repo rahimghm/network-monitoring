@@ -1,6 +1,8 @@
 import io
-from datetime import datetime
+import re
+from datetime import date, datetime, timedelta
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Query
@@ -15,7 +17,7 @@ from .schemas import (
     EquipmentCreate, EquipmentUpdate, EquipmentOut, DiagnosticOut, MetricPointOut,
     UserCreate, UserUpdate, PasswordChange, UserOut, TokenOut,
     ThresholdCreate, ThresholdOut,
-    SnapshotOut, SnapshotDetailOut, AuditLogOut,
+    SnapshotOut, SnapshotUpdate, SnapshotDetailOut, AuditLogOut,
 )
 from .snmp_poller import collect_diagnostics
 from .alerts import evaluate_thresholds
@@ -59,14 +61,6 @@ def run_diagnostic(equipment_id: int, hostname: str, community: str) -> dict:
                  iface["in_octets"], iface["out_octets"], iface["in_packets"],
                  iface["out_packets"], iface["in_errors"], iface["out_errors"],
                  iface["in_discards"], iface["out_discards"], iface["stp_state"])
-            )
-        for mac in data["mac_table"]:
-            cur.execute(
-                """INSERT INTO mac_table_entries
-                   (diagnostic_id, mac_address, bridge_port, if_index, if_descr, status)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
-                (diagnostic_id, mac["mac_address"], mac["bridge_port"], mac["if_index"],
-                 mac["if_descr"], mac["status"])
             )
         conn.commit()
 
@@ -112,6 +106,11 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+def snapshot_filename(label: str, extension: str) -> str:
+    safe_label = re.sub(r'[<>:"/\\|?*]+', '-', label).strip() or "snapshot"
+    return f"snapshot {safe_label}.{extension}"
 
 app.add_middleware(
     CORSMiddleware,
@@ -277,16 +276,40 @@ def delete_user(user_id: int, user: dict = Depends(authmod.require_action("users
 
 @app.get("/audit-logs", response_model=List[AuditLogOut])
 def list_audit_logs(limit: int = 200,
+                    username: Optional[str] = None,
+                    role: Optional[str] = None,
+                    action: Optional[str] = None,
+                    date_from: Optional[date] = None,
+                    date_to: Optional[date] = None,
                     user: dict = Depends(authmod.require_action("audit.read"))):
     limit = max(1, min(limit, 1000))
+    conditions = ["action <> 'monitoring.poll'"]
+    params = []
+    if username:
+        conditions.append("username ILIKE %s")
+        params.append(f"%{username.strip()}%")
+    if role:
+        conditions.append("role = %s")
+        params.append(role)
+    if action:
+        conditions.append("action = %s")
+        params.append(action)
+    if date_from:
+        conditions.append("created_at >= %s")
+        params.append(date_from)
+    if date_to:
+        conditions.append("created_at < %s")
+        params.append(date_to + timedelta(days=1))
+    params.append(limit)
     with get_cursor() as cur:
+        query = """SELECT id, user_id, username, role, action, resource, resource_id,
+                          details, created_at
+                   FROM audit_logs
+                   WHERE """ + " AND ".join(conditions) + """
+                   ORDER BY created_at DESC LIMIT %s"""
         cur.execute(
-            """SELECT id, user_id, username, role, action, resource, resource_id,
-                      details, created_at
-             FROM audit_logs
-             WHERE action <> 'monitoring.poll'
-             ORDER BY created_at DESC LIMIT %s""",
-            (limit,),
+            query,
+            params,
         )
         return cur.fetchall()
 
@@ -381,8 +404,6 @@ def get_equipment_history(equipment_id: int, limit: int = 20,
         for d in diagnostics:
             cur.execute("SELECT * FROM interface_metrics WHERE diagnostic_id = %s", (d["id"],))
             d["interfaces"] = cur.fetchall()
-            cur.execute("SELECT * FROM mac_table_entries WHERE diagnostic_id = %s", (d["id"],))
-            d["mac_table"] = cur.fetchall()
             out.append(d)
         return out
 
@@ -424,7 +445,7 @@ async def ws_diagnose(websocket: WebSocket, token: str = Query(...)):
                 "pause": "monitoring.control",
                 "resume": "monitoring.control",
                 "stop": "monitoring.control",
-                "snapshot": "monitoring.snapshot",
+                "snapshot": "monitoring.snapshot.create",
             }.get(action)
             permissions = authmod.ROLE_ACTIONS.get(user["role"], set())
             if action_permission is None or ("*" not in permissions and action_permission not in permissions):
@@ -542,8 +563,10 @@ def get_snapshot(snapshot_id: int, user: dict = Depends(authmod.require_action("
             raise HTTPException(status_code=404, detail="Snapshot introuvable")
 
         cur.execute(
-            """SELECT d.* FROM snapshot_items si
+            """SELECT d.*, e.name AS equipment_name, e.hostname AS equipment_hostname
+               FROM snapshot_items si
                JOIN diagnostics d ON d.id = si.diagnostic_id
+               JOIN equipments e ON e.id = d.equipment_id
                WHERE si.snapshot_id = %s""",
             (snapshot_id,)
         )
@@ -551,26 +574,66 @@ def get_snapshot(snapshot_id: int, user: dict = Depends(authmod.require_action("
         for d in diagnostics:
             cur.execute("SELECT * FROM interface_metrics WHERE diagnostic_id = %s", (d["id"],))
             d["interfaces"] = cur.fetchall()
-            cur.execute("SELECT * FROM mac_table_entries WHERE diagnostic_id = %s", (d["id"],))
-            d["mac_table"] = cur.fetchall()
+        cur.execute("SELECT to_regclass('public.snapshot_metrics') AS table_name")
+        metrics_table = cur.fetchone()["table_name"]
+        if metrics_table is None:
+            metrics = []
+        else:
+            cur.execute(
+                """SELECT equipment_id, collected_at, cpu_usage, ram_total_kb,
+                          ram_used_kb, is_up
+                   FROM snapshot_metrics
+                   WHERE snapshot_id = %s
+                   ORDER BY equipment_id, collected_at""",
+                (snapshot_id,),
+            )
+            metrics = cur.fetchall()
 
-    return {**snapshot, "diagnostics": diagnostics}
+    return {**snapshot, "diagnostics": diagnostics, "metrics": metrics}
+
+
+@app.patch("/snapshots/{snapshot_id}", response_model=SnapshotOut)
+def update_snapshot(snapshot_id: int, payload: SnapshotUpdate,
+                    user: dict = Depends(authmod.require_action("monitoring.snapshot.manage"))):
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE snapshots SET label = %s WHERE id = %s RETURNING *",
+            (payload.label, snapshot_id),
+        )
+        snapshot = cur.fetchone()
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Snapshot introuvable")
+    record_audit(user, "monitoring.snapshot.update", "snapshot", snapshot_id)
+    return snapshot
+
+
+@app.delete("/snapshots/{snapshot_id}", status_code=204)
+def delete_snapshot(snapshot_id: int,
+                    user: dict = Depends(authmod.require_action("monitoring.snapshot.delete"))):
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM snapshots WHERE id = %s", (snapshot_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Snapshot introuvable")
+    record_audit(user, "monitoring.snapshot.delete", "snapshot", snapshot_id)
+    return None
 
 
 @app.get("/snapshots/{snapshot_id}/export/xlsx")
 def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.require_action("history.export"))):
     from openpyxl import Workbook
+    from openpyxl.chart import LineChart, Reference
+    from openpyxl.chart.series import SeriesLabel
 
     detail = get_snapshot(snapshot_id, user)
     wb = Workbook()
     ws = wb.active
     ws.title = "Snapshot"
-    ws.append(["Équipement ID", "Statut", "IP", "Description", "Uptime (centisecondes)",
+    ws.append(["Nom", "Hostname", "Statut", "IP", "Description", "Uptime (centisecondes)",
                "CPU %", "RAM utilisée (kB)", "RAM totale (kB)", "Température °C",
                "Erreur", "Relevé le"])
     for d in detail["diagnostics"]:
         ws.append([
-            d["equipment_id"], "UP" if d["is_up"] else "DOWN", d["resolved_ip"],
+            d["equipment_name"], d["equipment_hostname"], "UP" if d["is_up"] else "DOWN", d["resolved_ip"],
             d["sys_descr"], d["sys_uptime"], d["cpu_usage"], d["ram_used_kb"],
             d["ram_total_kb"], d["temperature_c"], d["error_message"],
             d["collected_at"].strftime("%Y-%m-%d %H:%M:%S"),
@@ -578,27 +641,64 @@ def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.require_
 
     interfaces = wb.create_sheet("Interfaces")
     interfaces.append([
-        "Équipement ID", "Index", "Interface", "Admin", "Opérationnel", "STP",
+        "Nom", "Hostname", "Index", "Interface", "Admin", "Opérationnel", "STP",
         "Vitesse (bps)", "Entrée octets", "Sortie octets", "Entrée paquets",
         "Sortie paquets", "Entrée erreurs", "Sortie erreurs", "Entrée rejets", "Sortie rejets",
     ])
     for d in detail["diagnostics"]:
         for iface in d["interfaces"]:
             interfaces.append([
-                d["equipment_id"], iface["if_index"], iface["if_descr"], iface["admin_status"],
+                d["equipment_name"], d["equipment_hostname"], iface["if_index"], iface["if_descr"], iface["admin_status"],
                 iface["oper_status"], iface["stp_state"], iface["speed_bps"], iface["in_octets"],
                 iface["out_octets"], iface["in_packets"], iface["out_packets"], iface["in_errors"],
                 iface["out_errors"], iface["in_discards"], iface["out_discards"],
             ])
 
-    mac_table = wb.create_sheet("MAC Table")
-    mac_table.append(["Équipement ID", "MAC", "Bridge port", "Interface index", "Interface", "Statut"])
-    for d in detail["diagnostics"]:
-        for mac in d["mac_table"]:
-            mac_table.append([
-                d["equipment_id"], mac["mac_address"], mac["bridge_port"], mac["if_index"],
-                mac["if_descr"], mac["status"],
-            ])
+    metrics_sheet = wb.create_sheet("Graphiques")
+    metrics_sheet.append(["Nom", "Hostname", "Relevé le", "CPU %", "RAM utilisée (kB)", "RAM totale (kB)", "RAM %"])
+    equipment_by_id = {d["equipment_id"]: d for d in detail["diagnostics"]}
+    for metric in detail["metrics"]:
+        equipment = equipment_by_id.get(metric["equipment_id"], {})
+        ram_percent = None
+        if metric["ram_total_kb"]:
+            ram_percent = (metric["ram_used_kb"] or 0) / metric["ram_total_kb"] * 100
+        metrics_sheet.append([
+            equipment.get("equipment_name"), equipment.get("equipment_hostname"),
+            metric["collected_at"].strftime("%Y-%m-%d %H:%M:%S"), metric["cpu_usage"],
+            metric["ram_used_kb"], metric["ram_total_kb"], ram_percent,
+        ])
+
+    if metrics_sheet.max_row > 1:
+        categories = Reference(metrics_sheet, min_col=3, min_row=2, max_row=metrics_sheet.max_row)
+        last_metric = detail["metrics"][-1]
+        last_cpu = last_metric["cpu_usage"]
+        last_ram = None
+        if last_metric["ram_total_kb"]:
+            last_ram = (last_metric["ram_used_kb"] or 0) / last_metric["ram_total_kb"] * 100
+        chart_definitions = (
+            (4, f"CPU (%) - dernier: {last_cpu:.1f}%" if last_cpu is not None else "CPU (%) - dernier: N/A", "I2", "3B6FED"),
+            (7, f"RAM (%) - dernier: {last_ram:.1f}%" if last_ram is not None else "RAM (%) - dernier: N/A", "I20", "D1453B"),
+        )
+        for value_column, title, anchor, color in chart_definitions:
+            chart = LineChart()
+            chart.title = title
+            chart.y_axis.title = "Percent"
+            chart.x_axis.title = "Relevé"
+            chart.y_axis.scaling.min = 0
+            chart.y_axis.scaling.max = 100
+            chart.height = 7
+            chart.width = 14
+            chart.add_data(
+                Reference(metrics_sheet, min_col=value_column, max_col=value_column,
+                          min_row=1, max_row=metrics_sheet.max_row),
+                titles_from_data=True,
+                from_rows=False,
+            )
+            chart.set_categories(categories)
+            chart.series[0].tx = SeriesLabel(v="CPU (%)" if value_column == 4 else "RAM (%)")
+            chart.series[0].graphicalProperties.line.solidFill = color
+            chart.series[0].graphicalProperties.line.width = 25000
+            metrics_sheet.add_chart(chart, anchor)
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -606,7 +706,7 @@ def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.require_
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="snapshot_{snapshot_id}.xlsx"'}
+        headers={"Content-Disposition": f'attachment; filename="{snapshot_filename(detail["label"], "xlsx")}"'}
     )
 
 
@@ -615,20 +715,85 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.graphics.shapes import Drawing, PolyLine, String, Line
+    from reportlab.lib.enums import TA_LEFT
+    try:
+        from svglib.svglib import svg2rlg
+    except ImportError:
+        svg2rlg = None
 
     detail = get_snapshot(snapshot_id, user)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=24, leftMargin=24)
     styles = getSampleStyleSheet()
+    brand_green = colors.HexColor("#007a3d")
+    brand_green_dark = colors.HexColor("#005b2e")
+    brand_yellow = colors.HexColor("#f4c542")
+    brand_red = colors.HexColor("#d52b1e")
+    soft_green = colors.HexColor("#e5f3eb")
+    line_green = colors.HexColor("#cfe1d5")
 
-    elements = [Paragraph(f"Snapshot : {detail['label']}", styles["Title"]), Spacer(1, 12)]
+    title_style = ParagraphStyle(
+        "SonatrachTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=19, leading=23, textColor=brand_green_dark, alignment=TA_LEFT,
+        spaceAfter=2,
+    )
+    subtitle_style = ParagraphStyle(
+        "SonatrachSubtitle", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=8, leading=10, textColor=colors.HexColor("#66736b"),
+        tracking=1.2,
+    )
+    heading_style = ParagraphStyle(
+        "SonatrachHeading", parent=styles["Heading3"], fontName="Helvetica-Bold",
+        fontSize=11, leading=14, textColor=brand_green_dark, spaceBefore=5,
+        spaceAfter=5,
+    )
 
-    data = [["Équipement", "Statut", "IP", "Uptime (cs)", "CPU %", "RAM (kB)",
+    logo = None
+    logo_path = Path(__file__).resolve().parents[2] / "frontend" / "src" / "photos" / "Sonatrach.svg"
+    try:
+        if svg2rlg is None:
+            raise RuntimeError("svglib non installé")
+        logo = svg2rlg(str(logo_path))
+        scale = min(38 / logo.width, 44 / logo.height)
+        logo.scale(scale, scale)
+        logo.width = 38
+        logo.height = 44
+    except Exception:
+        logo = None
+
+    brand_content = [Paragraph("Sonatrach", title_style), Paragraph("NETWORK OPERATIONS", subtitle_style)]
+
+    def draw_page(canvas, document):
+        canvas.saveState()
+        canvas.setFillColor(colors.HexColor("#f3f7f4"))
+        canvas.rect(0, 0, landscape(A4)[0], landscape(A4)[1], stroke=0, fill=1)
+        canvas.setFillColor(brand_green)
+        canvas.rect(0, landscape(A4)[1] - 6, landscape(A4)[0] * .72, 6, stroke=0, fill=1)
+        canvas.setFillColor(brand_yellow)
+        canvas.rect(landscape(A4)[0] * .72, landscape(A4)[1] - 6, landscape(A4)[0] * .14, 6, stroke=0, fill=1)
+        canvas.setFillColor(brand_red)
+        canvas.rect(landscape(A4)[0] * .86, landscape(A4)[1] - 6, landscape(A4)[0] * .14, 6, stroke=0, fill=1)
+        canvas.setStrokeColor(line_green)
+        canvas.line(24, 22, landscape(A4)[0] - 24, 22)
+        canvas.setFillColor(colors.HexColor("#66736b"))
+        canvas.setFont("Helvetica", 7)
+        canvas.drawRightString(landscape(A4)[0] - 24, 11, f"Sonatrach Network Operations • Page {doc.page}")
+        canvas.restoreState()
+
+    elements = []
+    if logo is not None:
+        elements.extend([logo, Spacer(1, 3)])
+    elements.extend([brand_content[0], brand_content[1], Spacer(1, 8)])
+    elements.extend([Paragraph(f"Snapshot : {detail['label']}", title_style), Spacer(1, 12)])
+
+    data = [["Nom", "Hostname", "Statut", "IP", "Uptime (cs)", "CPU %", "RAM (kB)",
              "Temp °C", "Erreur", "Relevé le"]]
     for d in detail["diagnostics"]:
         data.append([
-            str(d["equipment_id"]), "UP" if d["is_up"] else "DOWN", str(d["resolved_ip"] or ""),
+            str(d["equipment_name"]), str(d["equipment_hostname"]),
+            "UP" if d["is_up"] else "DOWN", str(d["resolved_ip"] or ""),
             str(d["sys_uptime"]), str(d["cpu_usage"]), f"{d['ram_used_kb']}/{d['ram_total_kb']}",
             str(d["temperature_c"]), str(d["error_message"] or ""),
             d["collected_at"].strftime("%Y-%m-%d %H:%M:%S"),
@@ -636,16 +801,20 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
 
     table = Table(data)
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b6fed")),
+        ("BACKGROUND", (0, 0), (-1, 0), brand_green),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("GRID", (0, 0), (-1, -1), 0.5, line_green),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, soft_green]),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
     ]))
     elements.append(table)
 
     for d in detail["diagnostics"]:
         elements.append(Spacer(1, 14))
-        elements.append(Paragraph(f"Équipement {d['equipment_id']} - Interfaces", styles["Heading3"]))
+        elements.append(Paragraph(
+            f"{d['equipment_name']} - {d['equipment_hostname']} - Interfaces",
+            heading_style,
+        ))
         interface_data = [[
             "Index", "Interface", "Admin", "Op", "STP", "Vitesse", "In octets", "Out octets",
             "In paquets", "Out paquets", "In erreurs", "Out erreurs", "In rejets", "Out rejets",
@@ -660,32 +829,56 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
             ])
         interface_table = Table(interface_data, repeatRows=1, colWidths=[30, 80, 45, 45, 50, 55, 55, 55, 55, 55, 50, 50, 50, 50])
         interface_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b6fed")),
+            ("BACKGROUND", (0, 0), (-1, 0), brand_green),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("GRID", (0, 0), (-1, -1), 0.5, line_green),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, soft_green]),
             ("FONTSIZE", (0, 0), (-1, -1), 6),
         ]))
         elements.append(interface_table)
         elements.append(Spacer(1, 8))
-        elements.append(Paragraph("MAC table", styles["Heading4"]))
-        mac_data = [["MAC", "Bridge port", "Interface index", "Interface", "Statut"]]
-        for mac in d["mac_table"]:
-            mac_data.append([
-                mac["mac_address"], str(mac["bridge_port"] or ""), str(mac["if_index"] or ""),
-                str(mac["if_descr"] or ""), str(mac["status"] or ""),
-            ])
-        mac_table = Table(mac_data, repeatRows=1)
-        mac_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b6fed")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(mac_table)
-    doc.build(elements)
+        points = [m for m in detail["metrics"] if m["equipment_id"] == d["equipment_id"]]
+        last_cpu = points[-1]["cpu_usage"] if points else None
+        last_ram = None
+        if points and points[-1]["ram_total_kb"]:
+            last_ram = (points[-1]["ram_used_kb"] or 0) / points[-1]["ram_total_kb"] * 100
+        cpu_label = f"CPU (%) - dernière valeur: {last_cpu:.1f}%" if last_cpu is not None else "CPU (%) - dernière valeur: N/A"
+        ram_label = f"RAM (%) - dernière valeur: {last_ram:.1f}%" if last_ram is not None else "RAM (%) - dernière valeur: N/A"
+        elements.append(Paragraph(cpu_label, heading_style))
+        chart = Drawing(500, 160)
+        chart.add(String(2, 140, "100%", fontSize=8, fillColor=colors.grey))
+        chart.add(String(2, 15, "0%", fontSize=8, fillColor=colors.grey))
+        chart.add(Line(28, 20, 28, 145, strokeColor=colors.lightgrey))
+        chart.add(Line(28, 20, 495, 20, strokeColor=colors.lightgrey))
+        if points:
+            x_step = 465 / max(len(points) - 1, 1)
+            cpu_line = []
+            for index, point in enumerate(points):
+                x = 30 + index * x_step
+                cpu_line.extend([x, 20 + min(max(point["cpu_usage"] or 0, 0), 100) * 1.25])
+            chart.add(PolyLine(cpu_line, strokeColor=brand_green, strokeWidth=2))
+        elements.append(chart)
+        elements.append(Paragraph(ram_label, heading_style))
+        ram_chart = Drawing(500, 160)
+        ram_chart.add(String(2, 140, "100%", fontSize=8, fillColor=colors.grey))
+        ram_chart.add(String(2, 15, "0%", fontSize=8, fillColor=colors.grey))
+        ram_chart.add(Line(28, 20, 28, 145, strokeColor=colors.lightgrey))
+        ram_chart.add(Line(28, 20, 495, 20, strokeColor=colors.lightgrey))
+        if points:
+            x_step = 465 / max(len(points) - 1, 1)
+            ram_line = []
+            for index, point in enumerate(points):
+                x = 30 + index * x_step
+                ram_percent = 0
+                if point["ram_total_kb"]:
+                    ram_percent = (point["ram_used_kb"] or 0) / point["ram_total_kb"] * 100
+                ram_line.extend([x, 20 + min(max(ram_percent, 0), 100) * 1.25])
+            ram_chart.add(PolyLine(ram_line, strokeColor=brand_red, strokeWidth=2))
+        elements.append(ram_chart)
+    doc.build(elements, onFirstPage=draw_page, onLaterPages=draw_page)
     buffer.seek(0)
 
     return StreamingResponse(
         buffer, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="snapshot_{snapshot_id}.pdf"'}
+        headers={"Content-Disposition": f'attachment; filename="{snapshot_filename(detail["label"], "pdf")}"'}
     )

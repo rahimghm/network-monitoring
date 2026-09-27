@@ -24,7 +24,8 @@ export function useDiagnosisSession() {
         } else if (msg.type === 'alert') {
           pushToast(`⚠ Équipement #${msg.equipment_id} — ${msg.message}`, 'alert')
         } else if (msg.type === 'status') {
-          status.value = msg.status
+          // Resume is an active polling state in the UI.
+          status.value = msg.status === 'resumed' ? 'started' : msg.status
           if (statusWaiter?.status === msg.status) {
             statusWaiter.resolve()
             statusWaiter = null

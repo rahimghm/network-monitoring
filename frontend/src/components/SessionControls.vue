@@ -54,7 +54,7 @@ function doSnapshot() {
   gap: 8px;
   flex-wrap: wrap;
   background: #fff;
-  border: 1px solid #e2e5ea;
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 16px;
@@ -62,15 +62,15 @@ function doSnapshot() {
 .count { font-size: 12px; color: #888; margin-right: 4px; }
 .btn {
   padding: 7px 14px;
-  background: #eef2fe;
-  color: #3b6fed;
+  background: var(--brand-green-soft);
+  color: var(--brand-green-dark);
   border: none;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
-.btn.primary { background: #3b6fed; color: #fff; }
+.btn.primary { background: var(--brand-green); color: #fff; }
 .btn.danger { background: #fbe7e6; color: #d1453b; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .snapshot-input {

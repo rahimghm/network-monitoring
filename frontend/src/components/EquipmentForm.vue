@@ -61,7 +61,7 @@ async function handleSubmit() {
 <style scoped>
 .equip-form {
   background: #fff;
-  border: 1px solid #e2e5ea;
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 20px;
   max-width: 360px;
@@ -90,12 +90,12 @@ input {
 }
 input:focus {
   outline: none;
-  border-color: #3b6fed;
+  border-color: var(--brand-green);
 }
 button {
   width: 100%;
   padding: 9px;
-  background: #3b6fed;
+  background: var(--brand-green);
   color: #fff;
   border: none;
   border-radius: 6px;

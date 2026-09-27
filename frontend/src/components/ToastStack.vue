@@ -29,6 +29,6 @@ import { toasts } from '../toasts.js'
   max-width: 320px;
 }
 .toast.alert { background: #fbe7e6; color: #a12a22; border: 1px solid #f0d0ce; }
-.toast.info { background: #eef2fe; color: #3b6fed; border: 1px solid #d6e0fb; }
+.toast.info { background: var(--brand-green-soft); color: var(--brand-green-dark); border: 1px solid #b9ddc7; }
 .toast.success { background: #e5f7e8; color: #218838; border: 1px solid #c7ecc9; }
 </style>

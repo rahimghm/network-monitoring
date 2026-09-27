@@ -17,6 +17,7 @@ python-multipart==0.0.9
 # Export snapshots (Feature 3)
 openpyxl==3.1.5
 reportlab==4.2.5
+svglib==1.5.1
 
 # Tests
 pytest==8.3.3

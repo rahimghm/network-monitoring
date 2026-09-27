@@ -16,7 +16,9 @@ ALL_ACTIONS = {
     "equipment.manage",
     "diagnostic.run",
     "monitoring.control",
-    "monitoring.snapshot",
+    "monitoring.snapshot.create",
+    "monitoring.snapshot.manage",
+    "monitoring.snapshot.delete",
     "monitoring.receive",
     "history.read",
     "history.export",
@@ -30,14 +32,16 @@ ROLE_EXPECTATIONS = {
     "admin": ALL_ACTIONS,
     "technician": {
         "health.read", "config.read", "auth.me", "auth.change_password", "auth.logout",
-        "equipment.read", "equipment.manage", "diagnostic.run",
-        "monitoring.control", "monitoring.snapshot", "monitoring.receive",
-        "history.read", "history.export",
+        "equipment.read", "monitoring.control", "monitoring.snapshot.create",
+        "monitoring.receive", "history.read",
+        "history.export", "threshold.read",
     },
     "supervisor": {
         "health.read", "config.read", "auth.me", "auth.change_password", "auth.logout",
-        "equipment.read", "monitoring.receive", "history.read", "history.export",
-        "threshold.read",
+        "equipment.read", "equipment.manage", "diagnostic.run", "monitoring.control",
+        "monitoring.snapshot.create", "monitoring.snapshot.manage",
+        "monitoring.snapshot.delete", "monitoring.receive", "history.read",
+        "history.export", "threshold.read", "threshold.manage",
     },
 }
 
@@ -82,6 +86,8 @@ PROTECTED_HTTP_ROUTES = [
     ("DELETE", "/thresholds/1"),
     ("GET", "/snapshots"),
     ("GET", "/snapshots/1"),
+    ("PATCH", "/snapshots/1"),
+    ("DELETE", "/snapshots/1"),
     ("GET", "/snapshots/1/export/pdf"),
     ("GET", "/snapshots/1/export/xlsx"),
 ]

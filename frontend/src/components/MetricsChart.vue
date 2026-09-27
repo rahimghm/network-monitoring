@@ -124,12 +124,12 @@ onUnmounted(() => {
 .legend { font-size: 12px; color: #555; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
 .legend strong { color: #1a1d23; margin-left: auto; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.dot.cpu { background: #3b6fed; }
+.dot.cpu { background: var(--brand-green); }
 .dot.ram { background: #d1453b; }
 
 .svg-chart { width: 100%; height: 120px; display: block; }
 .axis { stroke: #e2e5ea; stroke-width: 1; }
 .line { stroke-width: 2; }
-.line.cpu { stroke: #3b6fed; }
+.line.cpu { stroke: var(--brand-green); }
 .line.ram { stroke: #d1453b; }
 </style>

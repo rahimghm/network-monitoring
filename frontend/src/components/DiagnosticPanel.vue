@@ -133,27 +133,6 @@ function formatCounter(value) {
           </tbody>
         </table>
 
-        <template v-if="diagnostic.mac_table?.length">
-          <h3>Table MAC ({{ diagnostic.mac_table.length }})</h3>
-          <table class="if-table">
-            <thead>
-              <tr>
-                <th>MAC</th>
-                <th>Port bridge</th>
-                <th>Interface</th>
-                <th>Statut</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="entry in diagnostic.mac_table" :key="`${entry.mac_address}-${entry.bridge_port}`">
-                <td class="mac-address">{{ entry.mac_address }}</td>
-                <td>{{ entry.bridge_port ?? '—' }}</td>
-                <td>{{ entry.if_descr || (entry.if_index != null ? `#${entry.if_index}` : '—') }}</td>
-                <td>{{ entry.status || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </template>
       </template>
     </div>
   </div>

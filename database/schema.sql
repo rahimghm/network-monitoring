@@ -64,20 +64,8 @@ ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS in_discards BIGINT;
 ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS out_discards BIGINT;
 ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS stp_state VARCHAR(20);
 
-CREATE TABLE IF NOT EXISTS mac_table_entries (
-    id SERIAL PRIMARY KEY,
-    diagnostic_id INTEGER REFERENCES diagnostics(id) ON DELETE CASCADE,
-    mac_address VARCHAR(17) NOT NULL,
-    bridge_port INTEGER,
-    if_index INTEGER,
-    if_descr VARCHAR(150),
-    status VARCHAR(20),
-    collected_at TIMESTAMP DEFAULT now()
-);
-
 CREATE INDEX IF NOT EXISTS idx_diagnostics_equipment ON diagnostics(equipment_id);
 CREATE INDEX IF NOT EXISTS idx_interface_diagnostic ON interface_metrics(diagnostic_id);
-CREATE INDEX IF NOT EXISTS idx_mac_diagnostic ON mac_table_entries(diagnostic_id);
 
 -- ========== Alertes (Feature 4) ==========
 -- equipment_id NULL = seuil global (s'applique à tout équipement sans override)
@@ -118,7 +106,19 @@ CREATE TABLE IF NOT EXISTS snapshot_items (
     diagnostic_id INTEGER REFERENCES diagnostics(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS snapshot_metrics (
+    id SERIAL PRIMARY KEY,
+    snapshot_id INTEGER REFERENCES snapshots(id) ON DELETE CASCADE,
+    equipment_id INTEGER REFERENCES equipments(id) ON DELETE CASCADE,
+    collected_at TIMESTAMP NOT NULL,
+    cpu_usage DOUBLE PRECISION,
+    ram_total_kb BIGINT,
+    ram_used_kb BIGINT,
+    is_up BOOLEAN
+);
+
 CREATE INDEX IF NOT EXISTS idx_snapshot_items_snapshot ON snapshot_items(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_snapshot_metrics_snapshot ON snapshot_metrics(snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_alert_thresholds_equipment ON alert_thresholds(equipment_id);
 
 -- ========== Audit logs ==========

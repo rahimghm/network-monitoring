@@ -75,8 +75,8 @@ export const listUsers = () => api.get('/users').then(r => r.data)
 export const createUser = (payload) => api.post('/users', payload).then(r => r.data)
 export const updateUser = (id, payload) => api.patch(`/users/${id}`, payload).then(r => r.data)
 export const deleteUser = (id) => api.delete(`/users/${id}`)
-export const listAuditLogs = (limit = 200) =>
-  api.get('/audit-logs', { params: { limit } }).then(r => r.data)
+export const listAuditLogs = (filters = {}) =>
+  api.get('/audit-logs', { params: { limit: 200, ...filters } }).then(r => r.data)
 
 // ---------- Équipements ----------
 
@@ -111,12 +111,23 @@ export const listSnapshots = (filters = {}) =>
   api.get('/snapshots', { params: filters }).then(r => r.data)
 
 export const getSnapshot = (id) => api.get(`/snapshots/${id}`).then(r => r.data)
+export const updateSnapshot = (id, payload) => api.patch(`/snapshots/${id}`, payload).then(r => r.data)
+export const deleteSnapshot = (id) => api.delete(`/snapshots/${id}`)
 
 // Téléchargement authentifié (le header Authorization ne peut pas être joint
 // à un simple lien <a href>, donc on récupère le fichier en blob puis on
 // déclenche le téléchargement nous-mêmes).
 export const downloadSnapshot = async (id, format, filename) => {
-  const res = await api.get(`/snapshots/${id}/export/${format}`, { responseType: 'blob' })
+  let res
+  try {
+    res = await api.get(`/snapshots/${id}/export/${format}`, { responseType: 'blob' })
+  } catch (error) {
+    if (error.response?.data instanceof Blob) {
+      const text = await error.response.data.text()
+      try { error.response.data = JSON.parse(text) } catch { error.response.data = { detail: text } }
+    }
+    throw error
+  }
   const url = window.URL.createObjectURL(new Blob([res.data]))
   const link = document.createElement('a')
   link.href = url

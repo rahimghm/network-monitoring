@@ -42,17 +42,11 @@ class InterfaceMetricOut(BaseModel):
     stp_state: Optional[str]
 
 
-class MacTableEntryOut(BaseModel):
-    mac_address: str
-    bridge_port: Optional[int]
-    if_index: Optional[int]
-    if_descr: Optional[str]
-    status: Optional[str]
-
-
 class DiagnosticOut(BaseModel):
     id: int
     equipment_id: int
+    equipment_name: Optional[str] = None
+    equipment_hostname: Optional[str] = None
     resolved_ip: Optional[str]
     is_up: bool
     sys_descr: Optional[str]
@@ -64,10 +58,10 @@ class DiagnosticOut(BaseModel):
     error_message: Optional[str]
     collected_at: datetime
     interfaces: List[InterfaceMetricOut] = []
-    mac_table: List[MacTableEntryOut] = []
 
 
 class MetricPointOut(BaseModel):
+    equipment_id: Optional[int] = None
     collected_at: datetime
     cpu_usage: Optional[float]
     ram_total_kb: Optional[int]
@@ -145,6 +139,10 @@ class SnapshotCreate(BaseModel):
     equipment_ids: List[int]
 
 
+class SnapshotUpdate(BaseModel):
+    label: str = Field(..., min_length=1, max_length=150)
+
+
 class SnapshotOut(BaseModel):
     id: int
     label: str
@@ -154,6 +152,7 @@ class SnapshotOut(BaseModel):
 
 class SnapshotDetailOut(SnapshotOut):
     diagnostics: List[DiagnosticOut] = []
+    metrics: List[MetricPointOut] = []
 
 
 class AuditLogOut(BaseModel):

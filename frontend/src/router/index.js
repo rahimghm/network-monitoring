@@ -13,7 +13,7 @@ const routes = [
   { path: '/login', component: LoginView, meta: { public: true } },
   { path: '/', component: DashboardView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
   { path: '/history', component: HistoryView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
-  { path: '/thresholds', component: ThresholdsView, meta: { roles: ['admin', 'supervisor'] } },
+  { path: '/thresholds', component: ThresholdsView, meta: { roles: ['admin', 'supervisor', 'technician'] } },
   { path: '/users', component: UsersView, meta: { roles: ['admin'] } },
   { path: '/audit-logs', component: AuditLogsView, meta: { roles: ['admin'] } },
   { path: '/account', component: AccountView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
