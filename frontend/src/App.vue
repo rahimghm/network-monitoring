@@ -11,8 +11,8 @@ const authed = computed(() => !!authState.token)
 const role = computed(() => authState.role)
 const username = computed(() => authState.username)
 
-function handleLogout() {
-  logout()
+async function handleLogout() {
+  await logout()
   router.push('/login')
 }
 </script>
@@ -28,10 +28,10 @@ function handleLogout() {
           <nav>
             <router-link to="/">Dashboard</router-link>
             <router-link to="/history">Historique</router-link>
-            <router-link v-if="role === 'admin'" to="/thresholds">Alertes</router-link>
+            <router-link v-if="role === 'admin' || role === 'supervisor'" to="/thresholds">Alertes</router-link>
             <router-link v-if="role === 'admin'" to="/users">Comptes</router-link>
+            <router-link v-if="role === 'admin'" to="/audit-logs">Journal</router-link>
             <router-link to="/account">Mon compte</router-link>
-            <router-link to="/grafana">Grafana</router-link>
           </nav>
           <div class="user-info">
             <span class="username">{{ username }}</span>

@@ -15,7 +15,7 @@ const loadError = ref(null)
 const thresholds = ref([])
 const isSupervisor = getRole() === 'supervisor'
 
-const { liveData, status, snapshot: doSnapshot, start, pause, resume, stop } = useDiagnosisSession()
+const { liveData, status, connect, disconnect, snapshot: doSnapshot, start, pause, resume, stop } = useDiagnosisSession()
 
 async function refresh() {
   try {
@@ -113,9 +113,12 @@ function breachesFor(id) {
 onMounted(async () => {
   await refresh()
   await loadThresholds()
+  if (isSupervisor) {
+    try { await connect() } catch (e) { pushToast('Connexion au flux live impossible.', 'alert') }
+  }
 })
 
-onUnmounted(() => stop())
+onUnmounted(() => isSupervisor ? disconnect() : stop())
 </script>
 
 <template>

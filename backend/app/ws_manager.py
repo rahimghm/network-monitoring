@@ -1,5 +1,5 @@
 """
-Une session de diagnostic multi-équipements par connexion WebSocket :
+Un flux de diagnostic partagé par toutes les connexions WebSocket :
 - "start"   {equipment_ids: [...], interval_seconds: 5}
 - "pause"   suspend l'envoi de mises à jour sans fermer la connexion
 - "resume"  reprend
@@ -16,6 +16,7 @@ from fastapi import WebSocket
 from .database import get_db, get_cursor
 from .snmp_poller import collect_diagnostics
 from .alerts import evaluate_thresholds
+from .polling_control import pause_automatic_polling, resume_automatic_polling
 
 
 def _save_diagnostic(equipment_id: int, data: dict) -> tuple:
@@ -60,19 +61,40 @@ def _save_diagnostic(equipment_id: int, data: dict) -> tuple:
     return diagnostic_id, collected_at
 
 
-class DiagnosisSession:
-    def __init__(self, websocket: WebSocket):
-        self.ws = websocket
+class MonitoringHub:
+    def __init__(self):
+        self.subscribers: set[WebSocket] = set()
         self.tasks: dict[int, asyncio.Task] = {}
         self.paused = False
+        self.running = False
         self.last_diagnostic_id: dict[int, int] = {}   # equipment_id -> dernier diagnostic_id connu
         self.last_payload: dict[int, dict] = {}         # equipment_id -> dernier payload envoyé
+
+    async def subscribe(self, websocket: WebSocket):
+        self.subscribers.add(websocket)
+        for payload in self.last_payload.values():
+            await websocket.send_json(payload)
+
+    def unsubscribe(self, websocket: WebSocket):
+        self.subscribers.discard(websocket)
+
+    async def broadcast(self, payload: dict):
+        disconnected = []
+        for websocket in self.subscribers:
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                disconnected.append(websocket)
+        for websocket in disconnected:
+            self.unsubscribe(websocket)
 
     async def _poll_loop(self, equipment_id: int, hostname: str, community: str, interval: float):
         while True:
             if not self.paused:
                 try:
                     data = await asyncio.to_thread(collect_diagnostics, hostname, community)
+                    if not self.running or self.paused:
+                        continue
                     diagnostic_id, collected_at = await asyncio.to_thread(
                         _save_diagnostic, equipment_id, data
                     )
@@ -89,16 +111,16 @@ class DiagnosisSession:
                                  "collected_at": collected_at.isoformat()},
                     }
                     self.last_payload[equipment_id] = payload
-                    await self.ws.send_json(payload)
+                    await self.broadcast(payload)
 
                     for alert in alerts:
-                        await self.ws.send_json({
+                        await self.broadcast({
                             "type": "alert",
                             "equipment_id": equipment_id,
                             **alert,
                         })
                 except Exception as e:
-                    await self.ws.send_json({
+                    await self.broadcast({
                         "type": "update",
                         "equipment_id": equipment_id,
                         "data": {"is_up": False, "error_message": str(e), "interfaces": []},
@@ -106,7 +128,9 @@ class DiagnosisSession:
             await asyncio.sleep(interval)
 
     async def start(self, equipment_ids: list, interval_seconds: float = 5):
+        self.running = True
         self.paused = False
+        resume_automatic_polling()
         with get_cursor() as cur:
             cur.execute(
                 "SELECT id, hostname, community FROM equipments WHERE id = ANY(%s)",
@@ -123,14 +147,21 @@ class DiagnosisSession:
 
     def pause(self):
         self.paused = True
+        pause_automatic_polling()
 
     def resume(self):
         self.paused = False
+        resume_automatic_polling()
 
     async def stop(self):
-        for task in self.tasks.values():
+        self.running = False
+        pause_automatic_polling()
+        tasks = list(self.tasks.values())
+        for task in tasks:
             task.cancel()
         self.tasks.clear()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def snapshot(self, label: str, created_by: int = None) -> int:
         """Fige les derniers diagnostics connus de la session dans un snapshot persistant."""
@@ -149,3 +180,6 @@ class DiagnosisSession:
                 )
             conn.commit()
         return snapshot_id
+
+
+monitoring_hub = MonitoringHub()

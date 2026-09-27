@@ -17,8 +17,6 @@ switches simulés (VM OVS + snmpd) ou vrais équipements
     ↓
 PostgreSQL (users / equipments / diagnostics / interface_metrics /
             alert_thresholds / alert_events / snapshots / snapshot_items)
-    ↑
-Grafana (lecture directe, dashboards de comparaison/tendances)
 ```
 
 ## 1. Base de données
@@ -93,7 +91,7 @@ Ouvre `http://localhost:5173`.
 - **Admin** : tout, y compris gérer les utilisateurs et les seuils d'alerte
 - **Technician** : ajouter/supprimer des équipements, lancer des diagnostics,
   prendre des snapshots, consulter l'historique
-- **Supervisor** : lecture seule (dashboard, historique, Grafana) + export
+- **Supervisor** : lecture seule (dashboard et historique) + export
 
 ## 5. Utilisation — diagnostic multi-équipements en temps réel
 
@@ -151,42 +149,7 @@ La page **Historique** liste tous les snapshots pris via le bouton
 Cliquer sur un snapshot affiche le détail (mêmes panneaux qu'en direct, en
 lecture seule), avec export **PDF** et **XLSX** du contenu.
 
-## 9. Intégration Grafana
-
-Grafana tourne **en dehors** de cette app, connecté directement à la même
-base PostgreSQL (lecture seule recommandée) :
-
-```bash
-# Exemple rapide avec Docker
-docker run -d -p 3000:3000 --name grafana grafana/grafana-oss
-```
-
-1. Ouvre `http://localhost:3000` (admin/admin par défaut)
-2. **Connections → Data sources → PostgreSQL** :
-   - Host : `host.docker.internal:5432` (ou l'IP de ta machine si Grafana
-     est dans un conteneur séparé de PostgreSQL)
-   - Database : `monitoring`, User/password : tes identifiants
-   - **Recommandé** : crée un utilisateur PostgreSQL en lecture seule dédié
-     à Grafana plutôt que d'utiliser le compte applicatif :
-     ```sql
-     CREATE USER grafana_reader WITH PASSWORD '...';
-     GRANT CONNECT ON DATABASE monitoring TO grafana_reader;
-     GRANT USAGE ON SCHEMA public TO grafana_reader;
-     GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_reader;
-     ```
-3. Crée un dashboard avec un panel "Comparaison CPU entre équipements",
-   requête SQL type :
-   ```sql
-   SELECT d.collected_at AS "time", e.name AS metric, d.cpu_usage AS value
-   FROM diagnostics d JOIN equipments e ON e.id = d.equipment_id
-   WHERE $__timeFilter(d.collected_at)
-   ORDER BY d.collected_at
-   ```
-4. Pour l'embed dans l'app : active `allow_embedding = true` dans
-   `grafana.ini` (section `[security]`), puis colle l'URL du panel (mode
-   partage → "Embed") dans la page **Grafana** de l'app
-
-## 10. Prérequis côté équipement (switch simulé OVS + snmpd)
+## 9. Prérequis côté équipement (switch simulé OVS + snmpd)
 
 Le backend s'appuie sur :
 - **IF-MIB** (standard) pour les interfaces, statut, vitesse, trafic —
@@ -204,7 +167,7 @@ Le backend s'appuie sur :
   ```
   puis `sudo systemctl restart snmpd`.
 
-## 11. Notes de robustesse et limites connues
+## 10. Notes de robustesse et limites connues
 
 - Si le hostname ne se résout pas ou si le switch ne répond pas en SNMP,
   le diagnostic est quand même enregistré en base avec `is_up=false` et

@@ -25,6 +25,39 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 ROLES = ("admin", "technician", "supervisor")
 
+# The single source of truth for API permissions.  "*" is reserved for the
+# administrator and grants every named action.
+ROLE_ACTIONS = {
+    "admin": {"*"},
+    "technician": {
+        "health.read",
+        "config.read",
+        "auth.me",
+        "auth.change_password",
+        "auth.logout",
+        "equipment.read",
+        "equipment.manage",
+        "diagnostic.run",
+        "monitoring.control",
+        "monitoring.snapshot",
+        "monitoring.receive",
+        "history.read",
+        "history.export",
+    },
+    "supervisor": {
+        "health.read",
+        "config.read",
+        "auth.me",
+        "auth.change_password",
+        "auth.logout",
+        "equipment.read",
+        "history.read",
+        "history.export",
+        "threshold.read",
+        "monitoring.receive",
+    },
+}
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -65,16 +98,31 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     return user
 
 
-def require_role(*allowed_roles: str):
-    """Dépendance FastAPI : Depends(require_role('admin', 'technician'))"""
+def require_action(action: str):
+    """FastAPI dependency enforcing one named action from ROLE_ACTIONS."""
     def _guard(user: dict = Depends(get_current_user)) -> dict:
-        if user["role"] not in allowed_roles:
+        permissions = ROLE_ACTIONS.get(user["role"], set())
+        if "*" not in permissions and action not in permissions:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Rôle requis : {', '.join(allowed_roles)}"
+                detail=f"Role '{user['role']}' is not permitted to perform '{action}'",
             )
         return user
     return _guard
+
+
+def get_user_from_token(token: str) -> dict:
+    """Authenticate a WebSocket token and return the current database user."""
+    payload = decode_token(token)
+    username = payload.get("sub")
+    if username is None:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    with get_cursor() as cur:
+        cur.execute("SELECT id, username, role FROM users WHERE username = %s", (username,))
+        user = cur.fetchone()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+    return user
 
 
 def users_exist() -> bool:

@@ -7,6 +7,7 @@ export function useDiagnosisSession() {
   const status = ref('idle')          // idle | started | paused | stopped
   const lastSnapshotId = ref(null)
   let socket = null
+  let statusWaiter = null
 
   function connect() {
     return new Promise((resolve, reject) => {
@@ -24,6 +25,10 @@ export function useDiagnosisSession() {
           pushToast(`⚠ Équipement #${msg.equipment_id} — ${msg.message}`, 'alert')
         } else if (msg.type === 'status') {
           status.value = msg.status
+          if (statusWaiter?.status === msg.status) {
+            statusWaiter.resolve()
+            statusWaiter = null
+          }
         } else if (msg.type === 'snapshot_saved') {
           lastSnapshotId.value = msg.snapshot_id
           pushToast('Snapshot enregistré.', 'success')
@@ -38,21 +43,35 @@ export function useDiagnosisSession() {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       await connect()
     }
-    socket.send(JSON.stringify({
+    await sendAndWait({
       action: 'start', equipment_ids: equipmentIds, interval_seconds: intervalSeconds
-    }))
+    }, 'started')
   }
 
-  function pause() {
-    socket?.send(JSON.stringify({ action: 'pause' }))
+  async function pause() {
+    await sendAndWait({ action: 'pause' }, 'paused')
   }
 
-  function resume() {
-    socket?.send(JSON.stringify({ action: 'resume' }))
+  async function resume() {
+    await sendAndWait({ action: 'resume' }, 'resumed')
   }
 
-  function stop() {
-    socket?.send(JSON.stringify({ action: 'stop' }))
+  async function stop() {
+    if (socket?.readyState === WebSocket.OPEN) {
+      try { await sendAndWait({ action: 'stop' }, 'stopped') } catch (e) { /* socket may already be closed */ }
+    }
+    disconnect()
+  }
+
+  function sendAndWait(message, expectedStatus) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      statusWaiter = { status: expectedStatus, resolve, reject }
+      socket.send(JSON.stringify(message))
+    })
+  }
+
+  function disconnect() {
     socket?.close()
     socket = null
     status.value = 'stopped'
@@ -62,5 +81,5 @@ export function useDiagnosisSession() {
     socket?.send(JSON.stringify({ action: 'snapshot', label }))
   }
 
-  return { liveData, status, lastSnapshotId, start, pause, resume, stop, snapshot }
+  return { liveData, status, lastSnapshotId, connect, disconnect, start, pause, resume, stop, snapshot }
 }

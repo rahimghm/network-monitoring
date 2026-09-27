@@ -121,3 +121,19 @@ CREATE TABLE IF NOT EXISTS snapshot_items (
 CREATE INDEX IF NOT EXISTS idx_snapshot_items_snapshot ON snapshot_items(snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_alert_thresholds_equipment ON alert_thresholds(equipment_id);
 
+-- ========== Audit logs ==========
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    username VARCHAR(50) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    action VARCHAR(100) NOT NULL,
+    resource VARCHAR(100),
+    resource_id INTEGER,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+

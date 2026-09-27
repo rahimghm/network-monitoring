@@ -5,17 +5,17 @@ import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import ThresholdsView from '../views/ThresholdsView.vue'
-import GrafanaView from '../views/GrafanaView.vue'
 import UsersView from '../views/UsersView.vue'
 import AccountView from '../views/AccountView.vue'
+import AuditLogsView from '../views/AuditLogsView.vue'
 
 const routes = [
   { path: '/login', component: LoginView, meta: { public: true } },
   { path: '/', component: DashboardView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
   { path: '/history', component: HistoryView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
-  { path: '/thresholds', component: ThresholdsView, meta: { roles: ['admin'] } },
-  { path: '/grafana', component: GrafanaView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
+  { path: '/thresholds', component: ThresholdsView, meta: { roles: ['admin', 'supervisor'] } },
   { path: '/users', component: UsersView, meta: { roles: ['admin'] } },
+  { path: '/audit-logs', component: AuditLogsView, meta: { roles: ['admin'] } },
   { path: '/account', component: AccountView, meta: { roles: ['admin', 'technician', 'supervisor'] } },
 ]
 

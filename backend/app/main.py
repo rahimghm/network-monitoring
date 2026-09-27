@@ -15,11 +15,13 @@ from .schemas import (
     EquipmentCreate, EquipmentUpdate, EquipmentOut, DiagnosticOut, MetricPointOut,
     UserCreate, UserUpdate, PasswordChange, UserOut, TokenOut,
     ThresholdCreate, ThresholdOut,
-    SnapshotOut, SnapshotDetailOut,
+    SnapshotOut, SnapshotDetailOut, AuditLogOut,
 )
 from .snmp_poller import collect_diagnostics
 from .alerts import evaluate_thresholds
-from .ws_manager import DiagnosisSession
+from .ws_manager import monitoring_hub
+from .audit import record_audit
+from .polling_control import is_automatic_polling_paused
 from . import auth as authmod
 
 
@@ -79,6 +81,8 @@ def run_diagnostic(equipment_id: int, hostname: str, community: str) -> dict:
 
 
 def poll_all_equipments():
+    if is_automatic_polling_paused():
+        return
     with get_cursor() as cur:
         cur.execute("SELECT id, hostname, community FROM equipments")
         equipments = cur.fetchall()
@@ -101,7 +105,13 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="Network Monitoring API", lifespan=lifespan)
+app = FastAPI(
+    title="Network Monitoring API",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -112,12 +122,12 @@ app.add_middleware(
 
 
 @app.get("/health")
-def health():
+def health(user: dict = Depends(authmod.require_action("health.read"))):
     return {"status": "ok"}
 
 
 @app.get("/config")
-def get_config():
+def get_config(user: dict = Depends(authmod.require_action("config.read"))):
     return {"poll_interval_seconds": POLL_INTERVAL_SECONDS}
 
 
@@ -139,7 +149,9 @@ def register(payload: UserCreate):
             "INSERT INTO users (username, password_hash, role) VALUES (%s,%s,%s) RETURNING *",
             (payload.username, authmod.hash_password(payload.password), "admin")  # 1er compte = admin
         )
-        return cur.fetchone()
+        created = cur.fetchone()
+    record_audit(created, "auth.register", "user", created["id"])
+    return created
 
 
 @app.post("/auth/login", response_model=TokenOut)
@@ -151,11 +163,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=401, detail="Identifiants invalides")
 
     token = authmod.create_access_token({"sub": user["username"], "role": user["role"]})
+    record_audit(user, "auth.login", "user", user["id"])
     return {"access_token": token, "role": user["role"], "username": user["username"]}
 
 
 @app.get("/auth/me", response_model=UserOut)
-def me(user: dict = Depends(authmod.get_current_user)):
+def me(user: dict = Depends(authmod.require_action("auth.me"))):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM users WHERE id = %s", (user["id"],))
         return cur.fetchone()
@@ -163,7 +176,7 @@ def me(user: dict = Depends(authmod.get_current_user)):
 
 @app.patch("/auth/password", status_code=204)
 def change_password(payload: PasswordChange,
-                    user: dict = Depends(authmod.get_current_user)):
+                    user: dict = Depends(authmod.require_action("auth.change_password"))):
     with get_cursor() as cur:
         cur.execute("SELECT password_hash FROM users WHERE id = %s", (user["id"],))
         account = cur.fetchone()
@@ -173,18 +186,25 @@ def change_password(payload: PasswordChange,
             "UPDATE users SET password_hash = %s WHERE id = %s",
             (authmod.hash_password(payload.new_password), user["id"]),
         )
+    record_audit(user, "auth.change_password", "user", user["id"])
+    return None
+
+
+@app.post("/auth/logout", status_code=204)
+def logout(user: dict = Depends(authmod.require_action("auth.logout"))):
+    record_audit(user, "auth.logout", "user", user["id"])
     return None
 
 
 @app.get("/users", response_model=List[UserOut])
-def list_users(user: dict = Depends(authmod.require_role("admin"))):
+def list_users(user: dict = Depends(authmod.require_action("users.manage"))):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM users ORDER BY created_at")
         return cur.fetchall()
 
 
 @app.post("/users", response_model=UserOut, status_code=201)
-def create_user(payload: UserCreate, user: dict = Depends(authmod.require_role("admin"))):
+def create_user(payload: UserCreate, user: dict = Depends(authmod.require_action("users.manage"))):
     if payload.role not in authmod.ROLES:
         raise HTTPException(status_code=400, detail=f"Rôle invalide : {payload.role}")
     with get_cursor() as cur:
@@ -195,12 +215,14 @@ def create_user(payload: UserCreate, user: dict = Depends(authmod.require_role("
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Erreur création utilisateur: {e}")
-        return cur.fetchone()
+        created = cur.fetchone()
+    record_audit(user, "users.create", "user", created["id"], {"role": created["role"]})
+    return created
 
 
 @app.patch("/users/{user_id}", response_model=UserOut)
 def update_user(user_id: int, payload: UserUpdate,
-                user: dict = Depends(authmod.require_role("admin"))):
+                user: dict = Depends(authmod.require_action("users.manage"))):
     if payload.role is None and payload.password is None:
         raise HTTPException(status_code=400, detail="Aucune modification fournie")
     if payload.role is not None and payload.role not in authmod.ROLES:
@@ -229,11 +251,14 @@ def update_user(user_id: int, payload: UserUpdate,
             f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING *",
             values,
         )
-        return cur.fetchone()
+        updated = cur.fetchone()
+    record_audit(user, "users.update", "user", user_id,
+                 {"role": payload.role, "password_changed": payload.password is not None})
+    return updated
 
 
 @app.delete("/users/{user_id}", status_code=204)
-def delete_user(user_id: int, user: dict = Depends(authmod.require_role("admin"))):
+def delete_user(user_id: int, user: dict = Depends(authmod.require_action("users.manage"))):
     if user_id == user["id"]:
         raise HTTPException(status_code=400, detail="Impossible de supprimer son propre compte")
     with get_cursor() as cur:
@@ -246,7 +271,24 @@ def delete_user(user_id: int, user: dict = Depends(authmod.require_role("admin")
             if cur.fetchone()["count"] <= 1:
                 raise HTTPException(status_code=400, detail="Impossible de supprimer le dernier administrateur")
         cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    record_audit(user, "users.delete", "user", user_id)
     return None
+
+
+@app.get("/audit-logs", response_model=List[AuditLogOut])
+def list_audit_logs(limit: int = 200,
+                    user: dict = Depends(authmod.require_action("audit.read"))):
+    limit = max(1, min(limit, 1000))
+    with get_cursor() as cur:
+        cur.execute(
+            """SELECT id, user_id, username, role, action, resource, resource_id,
+                      details, created_at
+             FROM audit_logs
+             WHERE action <> 'monitoring.poll'
+             ORDER BY created_at DESC LIMIT %s""",
+            (limit,),
+        )
+        return cur.fetchall()
 
 
 # ============ Équipements ============
@@ -254,7 +296,7 @@ def delete_user(user_id: int, user: dict = Depends(authmod.require_role("admin")
 # seule appliqué côté routeur Vue (les GET restent ouverts à tout utilisateur connecté).
 
 @app.get("/equipments", response_model=List[EquipmentOut])
-def list_equipments():
+def list_equipments(user: dict = Depends(authmod.require_action("equipment.read"))):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM equipments ORDER BY created_at DESC")
         return cur.fetchall()
@@ -262,7 +304,7 @@ def list_equipments():
 
 @app.post("/equipments", response_model=EquipmentOut, status_code=201)
 def create_equipment(eq: EquipmentCreate,
-                      user: dict = Depends(authmod.require_role("admin", "technician"))):
+                      user: dict = Depends(authmod.require_action("equipment.manage"))):
     with get_cursor() as cur:
         try:
             cur.execute(
@@ -272,12 +314,14 @@ def create_equipment(eq: EquipmentCreate,
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Erreur création: {e}")
-        return cur.fetchone()
+        equipment = cur.fetchone()
+    record_audit(user, "equipment.create", "equipment", equipment["id"])
+    return equipment
 
 
 @app.patch("/equipments/{equipment_id}", response_model=EquipmentOut)
 def update_equipment(equipment_id: int, payload: EquipmentUpdate,
-                     user: dict = Depends(authmod.require_role("admin", "technician"))):
+                     user: dict = Depends(authmod.require_action("equipment.manage"))):
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=400, detail="Aucune modification fournie")
@@ -294,14 +338,17 @@ def update_equipment(equipment_id: int, payload: EquipmentUpdate,
         equipment = cur.fetchone()
         if equipment is None:
             raise HTTPException(status_code=404, detail="Équipement introuvable")
-        return equipment
+    record_audit(user, "equipment.update", "equipment", equipment_id,
+                 {"fields": list(changes)})
+    return equipment
 
 
 @app.delete("/equipments/{equipment_id}", status_code=204)
 def delete_equipment(equipment_id: int,
-                      user: dict = Depends(authmod.require_role("admin", "technician"))):
+                      user: dict = Depends(authmod.require_action("equipment.manage"))):
     with get_cursor() as cur:
         cur.execute("DELETE FROM equipments WHERE id = %s", (equipment_id,))
+    record_audit(user, "equipment.delete", "equipment", equipment_id)
     return None
 
 
@@ -309,17 +356,20 @@ def delete_equipment(equipment_id: int,
 
 @app.post("/equipments/{equipment_id}/diagnose", response_model=DiagnosticOut)
 def diagnose_equipment(equipment_id: int,
-                        user: dict = Depends(authmod.require_role("admin", "technician"))):
+                        user: dict = Depends(authmod.require_action("diagnostic.run"))):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM equipments WHERE id = %s", (equipment_id,))
         equipment = cur.fetchone()
     if equipment is None:
         raise HTTPException(status_code=404, detail="Équipement introuvable")
-    return run_diagnostic(equipment_id, equipment["hostname"], equipment["community"])
+    result = run_diagnostic(equipment_id, equipment["hostname"], equipment["community"])
+    record_audit(user, "diagnostic.run", "equipment", equipment_id)
+    return result
 
 
 @app.get("/equipments/{equipment_id}/diagnostics", response_model=List[DiagnosticOut])
-def get_equipment_history(equipment_id: int, limit: int = 20):
+def get_equipment_history(equipment_id: int, limit: int = 20,
+                          user: dict = Depends(authmod.require_action("history.read"))):
     with get_cursor() as cur:
         cur.execute(
             """SELECT * FROM diagnostics WHERE equipment_id = %s
@@ -338,7 +388,8 @@ def get_equipment_history(equipment_id: int, limit: int = 20):
 
 
 @app.get("/equipments/{equipment_id}/metrics/timeseries", response_model=List[MetricPointOut])
-def get_metrics_timeseries(equipment_id: int, limit: int = 50):
+def get_metrics_timeseries(equipment_id: int, limit: int = 50,
+                           user: dict = Depends(authmod.require_action("equipment.read"))):
     with get_cursor() as cur:
         cur.execute(
             """SELECT collected_at, cpu_usage, ram_total_kb, ram_used_kb, is_up
@@ -357,58 +408,73 @@ def get_metrics_timeseries(equipment_id: int, limit: int = 50):
 @app.websocket("/ws/diagnose")
 async def ws_diagnose(websocket: WebSocket, token: str = Query(...)):
     try:
-        payload = authmod.decode_token(token)
-    except HTTPException:
-        await websocket.close(code=4401)
-        return
-    if payload.get("role") not in ("admin", "technician"):
-        await websocket.close(code=4403)
+        user = authmod.get_user_from_token(token)
+    except HTTPException as error:
+        await websocket.close(code=4401 if error.status_code == 401 else 4403)
         return
 
     await websocket.accept()
-    session = DiagnosisSession(websocket)
+    await monitoring_hub.subscribe(websocket)
     try:
         while True:
             msg = await websocket.receive_json()
             action = msg.get("action")
+            action_permission = {
+                "start": "monitoring.control",
+                "pause": "monitoring.control",
+                "resume": "monitoring.control",
+                "stop": "monitoring.control",
+                "snapshot": "monitoring.snapshot",
+            }.get(action)
+            permissions = authmod.ROLE_ACTIONS.get(user["role"], set())
+            if action_permission is None or ("*" not in permissions and action_permission not in permissions):
+                await websocket.send_json({
+                    "type": "error",
+                    "status_code": 403,
+                    "detail": f"Role '{user['role']}' is not permitted to perform '{action or 'unknown'}'",
+                })
+                continue
 
             if action == "start":
-                await session.start(
+                await monitoring_hub.start(
                     msg.get("equipment_ids", []),
                     msg.get("interval_seconds", 5)
                 )
+                record_audit(user, "monitoring.start", "monitoring")
                 await websocket.send_json({"type": "status", "status": "started"})
 
             elif action == "pause":
-                session.pause()
+                monitoring_hub.pause()
+                record_audit(user, "monitoring.pause", "monitoring")
                 await websocket.send_json({"type": "status", "status": "paused"})
 
             elif action == "resume":
-                session.resume()
+                monitoring_hub.resume()
+                record_audit(user, "monitoring.resume", "monitoring")
                 await websocket.send_json({"type": "status", "status": "resumed"})
 
             elif action == "stop":
-                await session.stop()
+                await monitoring_hub.stop()
+                record_audit(user, "monitoring.stop", "monitoring")
                 await websocket.send_json({"type": "status", "status": "stopped"})
 
             elif action == "snapshot":
-                with get_cursor() as cur:
-                    cur.execute("SELECT id FROM users WHERE username = %s", (payload.get("sub"),))
-                    user_row = cur.fetchone()
-                snapshot_id = session.snapshot(
+                snapshot_id = monitoring_hub.snapshot(
                     msg.get("label", f"Snapshot {datetime.utcnow().isoformat()}"),
-                    created_by=user_row["id"] if user_row else None
+                    created_by=user["id"]
                 )
+                record_audit(user, "monitoring.snapshot", "snapshot", snapshot_id)
                 await websocket.send_json({"type": "snapshot_saved", "snapshot_id": snapshot_id})
 
     except WebSocketDisconnect:
-        await session.stop()
+        monitoring_hub.unsubscribe(websocket)
+    return
 
 
 # ============ Feature 4 — Alertes / seuils ============
 
 @app.get("/thresholds", response_model=List[ThresholdOut])
-def list_thresholds(user: dict = Depends(authmod.get_current_user)):
+def list_thresholds(user: dict = Depends(authmod.require_action("threshold.read"))):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM alert_thresholds ORDER BY equipment_id NULLS FIRST, metric")
         return cur.fetchall()
@@ -416,7 +482,7 @@ def list_thresholds(user: dict = Depends(authmod.get_current_user)):
 
 @app.post("/thresholds", response_model=ThresholdOut, status_code=201)
 def create_threshold(payload: ThresholdCreate,
-                      user: dict = Depends(authmod.require_role("admin"))):
+                      user: dict = Depends(authmod.require_action("threshold.manage"))):
     with get_cursor() as cur:
         cur.execute(
             """INSERT INTO alert_thresholds (equipment_id, metric, operator, threshold_value, enabled)
@@ -424,13 +490,16 @@ def create_threshold(payload: ThresholdCreate,
             (payload.equipment_id, payload.metric, payload.operator,
              payload.threshold_value, payload.enabled)
         )
-        return cur.fetchone()
+        threshold = cur.fetchone()
+    record_audit(user, "threshold.create", "threshold", threshold["id"])
+    return threshold
 
 
 @app.delete("/thresholds/{threshold_id}", status_code=204)
-def delete_threshold(threshold_id: int, user: dict = Depends(authmod.require_role("admin"))):
+def delete_threshold(threshold_id: int, user: dict = Depends(authmod.require_action("threshold.manage"))):
     with get_cursor() as cur:
         cur.execute("DELETE FROM alert_thresholds WHERE id = %s", (threshold_id,))
+    record_audit(user, "threshold.delete", "threshold", threshold_id)
     return None
 
 
@@ -441,7 +510,7 @@ def list_snapshots(
     equipment_id: Optional[int] = None,
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
-    user: dict = Depends(authmod.get_current_user),
+    user: dict = Depends(authmod.require_action("history.read")),
 ):
     query = "SELECT DISTINCT s.* FROM snapshots s"
     conditions, params = [], []
@@ -465,7 +534,7 @@ def list_snapshots(
 
 
 @app.get("/snapshots/{snapshot_id}", response_model=SnapshotDetailOut)
-def get_snapshot(snapshot_id: int, user: dict = Depends(authmod.get_current_user)):
+def get_snapshot(snapshot_id: int, user: dict = Depends(authmod.require_action("history.read"))):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM snapshots WHERE id = %s", (snapshot_id,))
         snapshot = cur.fetchone()
@@ -489,7 +558,7 @@ def get_snapshot(snapshot_id: int, user: dict = Depends(authmod.get_current_user
 
 
 @app.get("/snapshots/{snapshot_id}/export/xlsx")
-def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.get_current_user)):
+def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.require_action("history.export"))):
     from openpyxl import Workbook
 
     detail = get_snapshot(snapshot_id, user)
@@ -542,7 +611,7 @@ def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.get_curr
 
 
 @app.get("/snapshots/{snapshot_id}/export/pdf")
-def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.get_current_user)):
+def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_action("history.export"))):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer

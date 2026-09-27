@@ -56,7 +56,8 @@ export const login = async (username, password) => {
   return data
 }
 
-export const logout = () => {
+export const logout = async () => {
+  try { await api.post('/auth/logout') } catch (error) { /* local logout still succeeds */ }
   localStorage.removeItem('auth_token')
   localStorage.removeItem('auth_role')
   localStorage.removeItem('auth_username')
@@ -74,6 +75,8 @@ export const listUsers = () => api.get('/users').then(r => r.data)
 export const createUser = (payload) => api.post('/users', payload).then(r => r.data)
 export const updateUser = (id, payload) => api.patch(`/users/${id}`, payload).then(r => r.data)
 export const deleteUser = (id) => api.delete(`/users/${id}`)
+export const listAuditLogs = (limit = 200) =>
+  api.get('/audit-logs', { params: { limit } }).then(r => r.data)
 
 // ---------- Équipements ----------
 

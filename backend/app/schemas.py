@@ -154,3 +154,15 @@ class SnapshotOut(BaseModel):
 
 class SnapshotDetailOut(SnapshotOut):
     diagnostics: List[DiagnosticOut] = []
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    user_id: Optional[int]
+    username: str
+    role: str
+    action: str
+    resource: Optional[str]
+    resource_id: Optional[int]
+    details: Optional[dict]
+    created_at: datetime
