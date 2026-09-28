@@ -5,12 +5,10 @@ import MetricsChart from './MetricsChart.vue'
 const props = defineProps({
   equipment: { type: Object, required: true },
   diagnostic: { type: Object, default: null },
-  isDiagnosing: { type: Boolean, default: false },
-  canDiagnose: { type: Boolean, default: true },
   breaches: { type: Object, default: () => ({ cpu_usage: false, ram_percent: false, temperature_c: false }) }
 })
 
-const emit = defineEmits(['close', 'diagnose'])
+const emit = defineEmits(['close'])
 </script>
 
 <template>
@@ -21,9 +19,6 @@ const emit = defineEmits(['close', 'diagnose'])
         <span class="title">{{ equipment.name }}</span>
       </div>
       <div class="header-actions">
-        <button v-if="canDiagnose" class="mini-btn" :disabled="isDiagnosing" @click="emit('diagnose', equipment)">
-          {{ isDiagnosing ? '...' : 'Re-diagnostiquer' }}
-        </button>
         <button class="close-btn" @click="emit('close', equipment.id)" title="Fermer ce panneau">✕</button>
       </div>
     </div>
@@ -57,16 +52,6 @@ const emit = defineEmits(['close', 'diagnose'])
 .status-dot.unknown { background: #c7cad1; }
 
 .header-actions { display: flex; gap: 6px; }
-.mini-btn {
-  padding: 4px 10px;
-  background: var(--brand-green-soft);
-  color: var(--brand-green-dark);
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.mini-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .close-btn {
   padding: 4px 8px;
   background: transparent;

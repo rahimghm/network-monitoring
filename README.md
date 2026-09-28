@@ -80,10 +80,11 @@ Ouvre `http://localhost:5173`.
 ## 4. Premier lancement — créer le compte Admin
 
 1. Ouvre `http://localhost:5173` → redirigé vers `/login`
-2. Clique **"Premier lancement ? Créer le compte admin"**
+2. Si aucun compte **Admin** n'existe encore, l'option **Créer le compte administrateur** apparaît sous le formulaire
 3. Choisis un nom d'utilisateur + mot de passe → ce premier compte devient
-   automatiquement **Admin**
-4. Une fois connecté, l'Admin peut créer les comptes Technician/Supervisor
+  automatiquement **Admin**
+4. Si un compte Admin existe déjà, seul le formulaire de connexion est affiché
+5. Une fois connecté, l'Admin peut créer les comptes Technician/Supervisor
    via `POST /users` (pas encore d'écran dédié — utilise `/docs` en attendant,
    ou ajoute une page si besoin)
 

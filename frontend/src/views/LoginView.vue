@@ -1,15 +1,30 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { login, registerFirstAdmin } from '../api.js'
+import { getAuthStatus, login, registerFirstAdmin } from '../api.js'
 import logoUrl from '../photos/Sonatrach.svg'
 
 const router = useRouter()
 const mode = ref('login')  // 'login' | 'register'
+const canRegister = ref(false)
 const username = ref('')
 const password = ref('')
 const error = ref(null)
 const loading = ref(false)
+
+onMounted(async () => {
+  try {
+    const status = await getAuthStatus()
+    canRegister.value = status.admin_exists === false
+  } catch (e) {
+    canRegister.value = false
+  }
+})
+
+function toggleMode() {
+  if (!canRegister.value) return
+  mode.value = mode.value === 'login' ? 'register' : 'login'
+}
 
 async function submit() {
   error.value = null
@@ -53,12 +68,12 @@ async function submit() {
 
       <p v-if="error" class="error">{{ error }}</p>
 
-      <button type="submit" :disabled="loading">
+      <button class="ui-btn ui-btn-primary" type="submit" :disabled="loading">
         {{ loading ? '...' : (mode === 'login' ? 'Se connecter' : 'Créer le compte') }}
       </button>
 
-      <button type="button" class="link-btn" @click="mode = mode === 'login' ? 'register' : 'login'">
-        {{ mode === 'login' ? "Premier lancement ? Créer le compte admin" : "Retour à la connexion" }}
+      <button v-if="canRegister" type="button" class="link-btn" @click="toggleMode">
+        {{ mode === 'login' ? 'Créer le compte administrateur' : 'Retour à la connexion' }}
       </button>
     </form>
   </div>

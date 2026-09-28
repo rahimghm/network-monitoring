@@ -113,7 +113,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="history-page">
+  <div class="history-page ui-page">
     <div class="filters">
       <div class="filter-heading">
         <span class="filter-kicker">Historique</span>
@@ -138,8 +138,8 @@ onMounted(async () => {
     </div>
 
     <div class="content">
-      <div class="snapshot-list">
-        <h2>Snapshots ({{ snapshots.length }})</h2>
+      <div class="snapshot-list ui-panel">
+        <h2 class="ui-section-title">Snapshots ({{ snapshots.length }})</h2>
         <p v-if="loading" class="empty">Chargement...</p>
         <p v-else-if="snapshots.length === 0" class="empty">Aucun snapshot pour ces filtres.</p>
         <div
@@ -168,16 +168,16 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="snapshot-detail">
+      <div class="snapshot-detail ui-panel">
         <div v-if="!selectedSnapshot" class="placeholder">
           Sélectionne un snapshot pour voir le détail.
         </div>
         <template v-else>
           <div class="detail-header">
-            <h2>{{ selectedSnapshot.label }}</h2>
+            <h2 class="ui-section-title">{{ selectedSnapshot.label }}</h2>
             <div class="export-actions">
-              <button @click="handleExport('pdf')">Export PDF</button>
-              <button @click="handleExport('xlsx')">Export XLSX</button>
+              <button class="ui-btn ui-btn-secondary" @click="handleExport('pdf')">Export PDF</button>
+              <button class="ui-btn ui-btn-secondary" @click="handleExport('xlsx')">Export XLSX</button>
             </div>
           </div>
 

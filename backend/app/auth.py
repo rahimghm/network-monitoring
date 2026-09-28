@@ -131,7 +131,14 @@ def get_user_from_token(token: str) -> dict:
     return user
 
 
+def admin_exists() -> bool:
+    with get_cursor() as cur:
+        cur.execute("SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin') AS exists")
+        return cur.fetchone()["exists"]
+
+
 def users_exist() -> bool:
+    """Compatibility helper for callers that need to detect any account."""
     with get_cursor() as cur:
         cur.execute("SELECT COUNT(*) AS count FROM users")
         return cur.fetchone()["count"] > 0

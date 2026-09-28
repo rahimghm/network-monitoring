@@ -44,7 +44,7 @@ function saveEditing() {
 </script>
 
 <template>
-  <div class="equip-list">
+  <div class="equip-list ui-panel">
     <div class="list-header">
       <h2>Équipements ({{ equipments.length }})</h2>
       <label class="select-all" v-if="equipments.length && canSelect">

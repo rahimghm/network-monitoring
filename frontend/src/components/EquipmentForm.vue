@@ -32,27 +32,27 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <form class="equip-form" @submit.prevent="handleSubmit">
-    <h2>Ajouter un équipement</h2>
+  <form class="equip-form ui-panel" @submit.prevent="handleSubmit">
+    <h2 class="ui-section-title">Ajouter un équipement</h2>
 
     <div class="field">
       <label for="name">Nom</label>
-      <input id="name" v-model="name" type="text" placeholder="ex: Switch Étage 2" />
+      <input class="ui-field" id="name" v-model="name" type="text" placeholder="ex: Switch Étage 2" />
     </div>
 
     <div class="field">
       <label for="hostname">Hostname</label>
-      <input id="hostname" v-model="hostname" type="text" placeholder="ex: switch1 ou 192.168.2.132" />
+      <input class="ui-field" id="hostname" v-model="hostname" type="text" placeholder="ex: switch1 ou 192.168.2.132" />
     </div>
 
     <div class="field">
       <label for="community">Communauté SNMP</label>
-      <input id="community" v-model="community" type="text" placeholder="public" />
+      <input class="ui-field" id="community" v-model="community" type="text" placeholder="public" />
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
 
-    <button type="submit" :disabled="submitting">
+    <button class="ui-btn ui-btn-primary" type="submit" :disabled="submitting">
       {{ submitting ? 'Ajout...' : 'Ajouter' }}
     </button>
   </form>

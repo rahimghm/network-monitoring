@@ -22,12 +22,16 @@ OID_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"
 OID_IF_ADMIN_STATUS = "1.3.6.1.2.1.2.2.1.7"
 OID_IF_OPER_STATUS = "1.3.6.1.2.1.2.2.1.8"
 OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"
-OID_IF_IN_OCTETS = "1.3.6.1.2.1.2.2.1.10"
-OID_IF_OUT_OCTETS = "1.3.6.1.2.1.2.2.1.16"
+OID_IF_IN_OCTETS = "1.3.6.1.2.1.2.2.1.10"  # fallback 32 bits
+OID_IF_OUT_OCTETS = "1.3.6.1.2.1.2.2.1.16"  # fallback 32 bits
+OID_IF_HC_IN_OCTETS = "1.3.6.1.2.1.31.1.1.1.6"  # 64 bits
+OID_IF_HC_OUT_OCTETS = "1.3.6.1.2.1.31.1.1.1.10"  # 64 bits
 OID_IF_IN_UCAST_PKTS = "1.3.6.1.2.1.2.2.1.11"
+OID_IF_HC_IN_UCAST_PKTS = "1.3.6.1.2.1.31.1.1.1.7"  # 64 bits
 OID_IF_IN_DISCARDS = "1.3.6.1.2.1.2.2.1.13"
 OID_IF_IN_ERRORS = "1.3.6.1.2.1.2.2.1.14"
 OID_IF_OUT_UCAST_PKTS = "1.3.6.1.2.1.2.2.1.17"
+OID_IF_HC_OUT_UCAST_PKTS = "1.3.6.1.2.1.31.1.1.1.11"  # 64 bits
 OID_IF_OUT_DISCARDS = "1.3.6.1.2.1.2.2.1.19"
 OID_IF_OUT_ERRORS = "1.3.6.1.2.1.2.2.1.20"
 
@@ -202,10 +206,20 @@ def collect_diagnostics(hostname: str, community: str = "public") -> dict:
     admin = _walk_to_dict(ip, community, OID_IF_ADMIN_STATUS)
     oper = _walk_to_dict(ip, community, OID_IF_OPER_STATUS)
     speed = _walk_to_dict(ip, community, OID_IF_SPEED)
-    in_octets = _walk_to_dict(ip, community, OID_IF_IN_OCTETS)
-    out_octets = _walk_to_dict(ip, community, OID_IF_OUT_OCTETS)
-    in_packets = _walk_to_dict(ip, community, OID_IF_IN_UCAST_PKTS)
-    out_packets = _walk_to_dict(ip, community, OID_IF_OUT_UCAST_PKTS)
+    in_octets = _walk_to_dict(ip, community, OID_IF_HC_IN_OCTETS)
+    out_octets = _walk_to_dict(ip, community, OID_IF_HC_OUT_OCTETS)
+    in_packets = _walk_to_dict(ip, community, OID_IF_HC_IN_UCAST_PKTS)
+    out_packets = _walk_to_dict(ip, community, OID_IF_HC_OUT_UCAST_PKTS)
+
+    # Prefer 64-bit HC counters and retain compatibility with older devices.
+    for counters, fallback_oid in (
+        (in_octets, OID_IF_IN_OCTETS),
+        (out_octets, OID_IF_OUT_OCTETS),
+        (in_packets, OID_IF_IN_UCAST_PKTS),
+        (out_packets, OID_IF_OUT_UCAST_PKTS),
+    ):
+        for idx, value in _walk_to_dict(ip, community, fallback_oid).items():
+            counters.setdefault(idx, value)
     in_errors = _walk_to_dict(ip, community, OID_IF_IN_ERRORS)
     out_errors = _walk_to_dict(ip, community, OID_IF_OUT_ERRORS)
     in_discards = _walk_to_dict(ip, community, OID_IF_IN_DISCARDS)

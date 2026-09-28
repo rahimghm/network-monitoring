@@ -60,7 +60,7 @@ async function handleLogout() {
 </template>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 :root {
   --brand-green: #007a3d;
   --brand-green-dark: #005b2e;
@@ -72,7 +72,6 @@ async function handleLogout() {
   --line: #dce7e0;
   --canvas: #f3f7f4;
   --surface: #ffffff;
-  --shadow: 0 12px 30px rgba(24, 72, 45, .08);
 }
 * { box-sizing: border-box; }
 html, body, #app { min-height: 100%; }
@@ -80,7 +79,7 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
-  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
   font-size: 14px;
 }
 button, input, select { font-family: inherit; }

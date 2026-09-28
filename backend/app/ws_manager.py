@@ -154,6 +154,8 @@ class MonitoringHub:
         self.tasks.clear()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        self.last_diagnostic_id.clear()
+        self.last_payload.clear()
 
     def snapshot(self, label: str, created_by: int = None) -> int:
         """Fige les derniers diagnostics connus de la session dans un snapshot persistant."""

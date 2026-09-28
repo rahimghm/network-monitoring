@@ -25,22 +25,22 @@ async function submit() {
 </script>
 
 <template>
-  <div class="account-page">
-    <div class="heading">
-      <p class="eyebrow">Compte personnel</p>
-      <h2>Modifier mon mot de passe</h2>
+  <div class="account-page ui-page">
+    <div class="heading ui-heading">
+      <p class="eyebrow ui-eyebrow">Compte personnel</p>
+      <h2 class="ui-title">Modifier mon mot de passe</h2>
     </div>
-    <form class="password-panel" @submit.prevent="submit">
+    <form class="password-panel ui-panel" @submit.prevent="submit">
       <label>Mot de passe actuel
-        <input v-model="form.current_password" type="password" required autocomplete="current-password" />
+        <input class="ui-field" v-model="form.current_password" type="password" required autocomplete="current-password" />
       </label>
       <label>Nouveau mot de passe
-        <input v-model="form.new_password" type="password" required minlength="6" autocomplete="new-password" />
+        <input class="ui-field" v-model="form.new_password" type="password" required minlength="6" autocomplete="new-password" />
       </label>
       <label>Confirmer le nouveau mot de passe
-        <input v-model="form.confirmation" type="password" required minlength="6" autocomplete="new-password" />
+        <input class="ui-field" v-model="form.confirmation" type="password" required minlength="6" autocomplete="new-password" />
       </label>
-      <button type="submit" :disabled="saving">{{ saving ? 'Enregistrement...' : 'Enregistrer' }}</button>
+      <button class="ui-btn ui-btn-primary" type="submit" :disabled="saving">{{ saving ? 'Enregistrement...' : 'Enregistrer' }}</button>
     </form>
   </div>
 </template>

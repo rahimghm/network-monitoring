@@ -105,7 +105,7 @@ async function handleManualDiagnose(eq) {
 }
 
 const openPanelIds = computed(() =>
-  Object.keys(liveData).map(Number).filter(id => selectedIds.value.includes(id) || liveData[id])
+  Object.keys(liveData).map(Number).filter(id => selectedIds.value.includes(id))
 )
 
 function breachesFor(id) {
@@ -118,7 +118,10 @@ onMounted(async () => {
   try { await connect() } catch (e) { pushToast('Connexion au flux live impossible.', 'alert') }
 })
 
-onUnmounted(() => disconnect())
+onUnmounted(() => {
+  // Stop the shared backend session before closing this page's socket.
+  void stop()
+})
 </script>
 
 <template>

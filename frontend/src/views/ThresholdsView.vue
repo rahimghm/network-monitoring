@@ -48,31 +48,31 @@ onMounted(refresh)
 </script>
 
 <template>
-  <div class="thresholds-page">
-    <form v-if="canManageThresholds" class="threshold-form" @submit.prevent="submit">
-      <h2>Ajouter un seuil</h2>
+  <div class="thresholds-page ui-page">
+    <form v-if="canManageThresholds" class="threshold-form ui-panel" @submit.prevent="submit">
+      <h2 class="ui-section-title">Ajouter un seuil</h2>
       <div class="row">
-        <select v-model="form.equipment_id">
+        <select class="ui-field" v-model="form.equipment_id">
           <option value="">Global (tous équipements)</option>
           <option v-for="eq in equipments" :key="eq.id" :value="eq.id">{{ eq.name }}</option>
         </select>
-        <select v-model="form.metric">
+        <select class="ui-field" v-model="form.metric">
           <option value="cpu_usage">CPU (%)</option>
           <option value="ram_percent">RAM (%)</option>
           <option value="temperature_c">Température (°C)</option>
         </select>
-        <select v-model="form.operator">
+        <select class="ui-field" v-model="form.operator">
           <option value="gt">supérieur à</option>
           <option value="lt">inférieur à</option>
         </select>
-        <input type="number" v-model="form.threshold_value" step="0.1" />
-        <button type="submit">Ajouter</button>
+        <input class="ui-field" type="number" v-model="form.threshold_value" step="0.1" />
+        <button class="ui-btn ui-btn-primary" type="submit">Ajouter</button>
       </div>
     </form>
 
-    <div class="threshold-list">
-      <h2>Seuils configurés ({{ thresholds.length }})</h2>
-      <table>
+    <div class="threshold-list ui-panel">
+      <h2 class="ui-section-title">Seuils configurés ({{ thresholds.length }})</h2>
+      <table class="ui-table">
         <thead>
           <tr>
             <th>Équipement</th><th>Métrique</th><th>Condition</th><th>Statut</th><th v-if="canManageThresholds"></th>

@@ -37,6 +37,8 @@ api.interceptors.response.use(
 
 // ---------- Auth ----------
 
+export const getAuthStatus = () => api.get('/auth/status').then(r => r.data)
+
 export const registerFirstAdmin = (payload) =>
   api.post('/auth/register', payload).then(r => r.data)
 

@@ -26,6 +26,14 @@ function formatOctets(o) {
   return `${o} o`
 }
 
+function formatPackets(value) {
+  if (value == null) return '—'
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)} G`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} k`
+  return value.toLocaleString('fr-FR')
+}
+
 function formatUptime(seconds100) {
   if (seconds100 == null) return '—'
   const totalSeconds = Math.floor(seconds100 / 100)
@@ -35,9 +43,6 @@ function formatUptime(seconds100) {
   return `${days}j ${hours}h ${minutes}m`
 }
 
-function formatCounter(value) {
-  return value == null ? '—' : value.toLocaleString('fr-FR')
-}
 </script>
 
 <template>
@@ -94,8 +99,9 @@ function formatCounter(value) {
         <p class="sys-descr" v-if="diagnostic.sys_descr">{{ diagnostic.sys_descr }}</p>
 
         <h3>Interfaces ({{ diagnostic.interfaces.length }})</h3>
-        <table class="if-table">
-          <thead>
+        <div class="table-scroll">
+          <table class="if-table ui-table">
+            <thead>
             <tr>
               <th>Port</th>
               <th>Admin</th>
@@ -111,27 +117,28 @@ function formatCounter(value) {
               <th>Rejets entrants</th>
               <th>Rejets sortants</th>
             </tr>
-          </thead>
-          <tbody>
-            <tr v-for="iface in diagnostic.interfaces" :key="iface.if_index">
-              <td>{{ iface.if_descr || `#${iface.if_index}` }}</td>
-              <td>{{ iface.admin_status || '—' }}</td>
-              <td>
-                <span class="if-status" :class="iface.oper_status">{{ iface.oper_status }}</span>
-              </td>
-              <td>{{ iface.stp_state || '—' }}</td>
-              <td>{{ formatSpeed(iface.speed_bps) }}</td>
-              <td>{{ formatCounter(iface.in_octets) }}</td>
-              <td>{{ formatCounter(iface.out_octets) }}</td>
-              <td>{{ formatCounter(iface.in_packets) }}</td>
-              <td>{{ formatCounter(iface.out_packets) }}</td>
-              <td>{{ formatCounter(iface.in_errors) }}</td>
-              <td>{{ formatCounter(iface.out_errors) }}</td>
-              <td>{{ formatCounter(iface.in_discards) }}</td>
-              <td>{{ formatCounter(iface.out_discards) }}</td>
-            </tr>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <tr v-for="iface in diagnostic.interfaces" :key="iface.if_index">
+                <td>{{ iface.if_descr || `#${iface.if_index}` }}</td>
+                <td>{{ iface.admin_status || '—' }}</td>
+                <td>
+                  <span class="if-status" :class="iface.oper_status">{{ iface.oper_status }}</span>
+                </td>
+                <td>{{ iface.stp_state || '—' }}</td>
+                <td>{{ formatSpeed(iface.speed_bps) }}</td>
+                <td :title="iface.in_octets?.toLocaleString('fr-FR')">{{ formatOctets(iface.in_octets) }}</td>
+                <td :title="iface.out_octets?.toLocaleString('fr-FR')">{{ formatOctets(iface.out_octets) }}</td>
+                <td :title="iface.in_packets?.toLocaleString('fr-FR')">{{ formatPackets(iface.in_packets) }}</td>
+                <td :title="iface.out_packets?.toLocaleString('fr-FR')">{{ formatPackets(iface.out_packets) }}</td>
+                <td :title="iface.in_errors?.toLocaleString('fr-FR')">{{ formatPackets(iface.in_errors) }}</td>
+                <td :title="iface.out_errors?.toLocaleString('fr-FR')">{{ formatPackets(iface.out_errors) }}</td>
+                <td :title="iface.in_discards?.toLocaleString('fr-FR')">{{ formatPackets(iface.in_discards) }}</td>
+                <td :title="iface.out_discards?.toLocaleString('fr-FR')">{{ formatPackets(iface.out_discards) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
       </template>
     </div>
@@ -205,7 +212,8 @@ function formatCounter(value) {
 }
 
 h3 { font-size: 14px; margin: 0 0 10px; color: #1a1d23; }
-.if-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.if-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
 .if-table th {
   text-align: left;
   color: #888;

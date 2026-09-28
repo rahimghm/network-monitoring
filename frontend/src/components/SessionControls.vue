@@ -17,21 +17,21 @@ function doSnapshot() {
 </script>
 
 <template>
-  <div class="controls">
+  <div class="controls ui-panel">
     <span class="count">{{ selectedCount }} sélectionné(s)</span>
 
     <button
       v-if="status !== 'started'"
-      class="btn primary"
+      class="btn primary ui-btn ui-btn-primary"
       :disabled="selectedCount === 0"
       @click="status === 'paused' ? emit('resume') : emit('start')"
     >
       {{ status === 'paused' ? 'Reprendre' : 'Démarrer' }}
     </button>
 
-    <button v-else class="btn" @click="emit('pause')">Pause</button>
+    <button v-else class="btn ui-btn ui-btn-secondary" @click="emit('pause')">Pause</button>
 
-    <button class="btn danger" :disabled="status === 'idle' || status === 'stopped'" @click="emit('stop')">
+    <button class="btn danger ui-btn ui-btn-danger" :disabled="status === 'idle' || status === 'stopped'" @click="emit('stop')">
       Stop
     </button>
 
@@ -39,9 +39,9 @@ function doSnapshot() {
       v-model="snapshotLabel"
       type="text"
       placeholder="Nom du snapshot (optionnel)"
-      class="snapshot-input"
+      class="snapshot-input ui-field"
     />
-    <button class="btn" :disabled="status !== 'started' && status !== 'paused'" @click="doSnapshot">
+    <button class="btn ui-btn ui-btn-secondary" :disabled="status !== 'started' && status !== 'paused'" @click="doSnapshot">
       Snapshot
     </button>
   </div>

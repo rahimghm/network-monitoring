@@ -132,16 +132,21 @@ def get_config(user: dict = Depends(authmod.require_action("config.read"))):
 
 # ============ Auth & RBAC (Feature 5) ============
 
+@app.get("/auth/status")
+def auth_status():
+    return {"admin_exists": authmod.admin_exists()}
+
+
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate):
     """
     Ouvert uniquement pour créer le tout premier compte (devient Admin).
     Ensuite, protégé — voir POST /users (Admin uniquement) pour créer d'autres comptes.
     """
-    if authmod.users_exist():
+    if authmod.admin_exists():
         raise HTTPException(
             status_code=403,
-            detail="Inscription libre fermée : utilisez POST /users (Admin) pour créer un compte."
+                detail="Un compte administrateur existe déjà. Utilisez la connexion."
         )
     with get_cursor() as cur:
         cur.execute(
@@ -489,6 +494,8 @@ async def ws_diagnose(websocket: WebSocket, token: str = Query(...)):
 
     except WebSocketDisconnect:
         monitoring_hub.unsubscribe(websocket)
+        if not monitoring_hub.subscribers:
+            await monitoring_hub.stop()
     return
 
 
@@ -713,8 +720,8 @@ def export_snapshot_xlsx(snapshot_id: int, user: dict = Depends(authmod.require_
 @app.get("/snapshots/{snapshot_id}/export/pdf")
 def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_action("history.export"))):
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A3, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, LongTable, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.graphics.shapes import Drawing, PolyLine, String, Line
     from reportlab.lib.enums import TA_LEFT
@@ -725,7 +732,16 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
 
     detail = get_snapshot(snapshot_id, user)
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=24, leftMargin=24)
+    page_size = landscape(A3)
+    page_width, page_height = page_size
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=page_size,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=72,
+        bottomMargin=36,
+    )
     styles = getSampleStyleSheet()
     brand_green = colors.HexColor("#007a3d")
     brand_green_dark = colors.HexColor("#005b2e")
@@ -756,10 +772,10 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
         if svg2rlg is None:
             raise RuntimeError("svglib non installé")
         logo = svg2rlg(str(logo_path))
-        scale = min(38 / logo.width, 44 / logo.height)
+        scale = min(52 / logo.width, 60 / logo.height)
         logo.scale(scale, scale)
-        logo.width = 38
-        logo.height = 44
+        logo.width = 52
+        logo.height = 60
     except Exception:
         logo = None
 
@@ -768,24 +784,37 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
     def draw_page(canvas, document):
         canvas.saveState()
         canvas.setFillColor(colors.HexColor("#f3f7f4"))
-        canvas.rect(0, 0, landscape(A4)[0], landscape(A4)[1], stroke=0, fill=1)
+        canvas.rect(0, 0, page_width, page_height, stroke=0, fill=1)
         canvas.setFillColor(brand_green)
-        canvas.rect(0, landscape(A4)[1] - 6, landscape(A4)[0] * .72, 6, stroke=0, fill=1)
+        canvas.rect(0, page_height - 6, page_width * .72, 6, stroke=0, fill=1)
         canvas.setFillColor(brand_yellow)
-        canvas.rect(landscape(A4)[0] * .72, landscape(A4)[1] - 6, landscape(A4)[0] * .14, 6, stroke=0, fill=1)
+        canvas.rect(page_width * .72, page_height - 6, page_width * .14, 6, stroke=0, fill=1)
         canvas.setFillColor(brand_red)
-        canvas.rect(landscape(A4)[0] * .86, landscape(A4)[1] - 6, landscape(A4)[0] * .14, 6, stroke=0, fill=1)
+        canvas.rect(page_width * .86, page_height - 6, page_width * .14, 6, stroke=0, fill=1)
         canvas.setStrokeColor(line_green)
-        canvas.line(24, 22, landscape(A4)[0] - 24, 22)
+        canvas.line(30, 24, page_width - 30, 24)
         canvas.setFillColor(colors.HexColor("#66736b"))
         canvas.setFont("Helvetica", 7)
-        canvas.drawRightString(landscape(A4)[0] - 24, 11, f"Sonatrach Network Operations • Page {doc.page}")
+        canvas.drawRightString(page_width - 30, 12, f"Sonatrach Network Operations • Page {doc.page}")
         canvas.restoreState()
 
     elements = []
     if logo is not None:
-        elements.extend([logo, Spacer(1, 3)])
-    elements.extend([brand_content[0], brand_content[1], Spacer(1, 8)])
+        brand_header = Table(
+            [[logo, [brand_content[0], brand_content[1]]]],
+            colWidths=[64, doc.width - 64],
+            rowHeights=[60],
+        )
+        brand_header.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        elements.extend([brand_header, Spacer(1, 8)])
+    else:
+        elements.extend([brand_content[0], brand_content[1], Spacer(1, 8)])
     elements.extend([Paragraph(f"Snapshot : {detail['label']}", title_style), Spacer(1, 12)])
 
     data = [["Nom", "Hostname", "Statut", "IP", "Uptime (cs)", "CPU %", "RAM (kB)",
@@ -799,7 +828,7 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
             d["collected_at"].strftime("%Y-%m-%d %H:%M:%S"),
         ])
 
-    table = Table(data)
+    table = LongTable(data, repeatRows=1, colWidths=[115, 145, 60, 105, 85, 60, 105, 75, 220, 125])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), brand_green),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -827,7 +856,11 @@ def export_snapshot_pdf(snapshot_id: int, user: dict = Depends(authmod.require_a
                 str(iface["out_packets"] or ""), str(iface["in_errors"] or ""), str(iface["out_errors"] or ""),
                 str(iface["in_discards"] or ""), str(iface["out_discards"] or ""),
             ])
-        interface_table = Table(interface_data, repeatRows=1, colWidths=[30, 80, 45, 45, 50, 55, 55, 55, 55, 55, 50, 50, 50, 50])
+        interface_table = LongTable(
+            interface_data,
+            repeatRows=1,
+            colWidths=[45, 125, 65, 65, 70, 85, 90, 90, 90, 90, 80, 80, 80, 80],
+        )
         interface_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), brand_green),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

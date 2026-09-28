@@ -73,38 +73,38 @@ onMounted(refresh)
 </script>
 
 <template>
-  <div class="users-page">
-    <div class="page-heading">
+  <div class="users-page ui-page">
+    <div class="page-heading ui-page-heading">
       <div>
-        <p class="eyebrow">Administration</p>
-        <h2>Gestion des comptes</h2>
+        <p class="eyebrow ui-eyebrow">Administration</p>
+        <h2 class="ui-title">Gestion des comptes</h2>
       </div>
       <span class="count">{{ users.length }} compte{{ users.length > 1 ? 's' : '' }}</span>
     </div>
 
-    <form class="create-panel" @submit.prevent="addUser">
-      <h3>Créer un compte</h3>
+    <form class="create-panel ui-panel" @submit.prevent="addUser">
+      <h3 class="ui-section-title">Créer un compte</h3>
       <div class="form-row">
-        <label>Nom d'utilisateur <input v-model.trim="newUser.username" type="text" minlength="3" maxlength="50" required /></label>
-        <label>Mot de passe <input v-model="newUser.password" type="password" minlength="6" required /></label>
+        <label>Nom d'utilisateur <input class="ui-field" v-model.trim="newUser.username" type="text" minlength="3" maxlength="50" required /></label>
+        <label>Mot de passe <input class="ui-field" v-model="newUser.password" type="password" minlength="6" required /></label>
         <label>Rôle
-          <select v-model="newUser.role">
+          <select class="ui-field" v-model="newUser.role">
             <option value="admin">Administrateur</option>
             <option value="technician">Technicien</option>
             <option value="supervisor">Superviseur</option>
           </select>
         </label>
-        <button type="submit">Créer le compte</button>
+        <button class="ui-btn ui-btn-primary" type="submit">Créer le compte</button>
       </div>
     </form>
 
-    <section class="users-panel">
+    <section class="users-panel ui-panel">
       <div class="panel-heading">
         <h3>Comptes existants</h3>
         <span v-if="loading" class="muted">Chargement...</span>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="ui-table">
           <thead>
             <tr><th>Utilisateur</th><th>Rôle</th><th>Créé le</th><th class="actions-column">Actions</th></tr>
           </thead>
@@ -113,7 +113,7 @@ onMounted(refresh)
               <td class="username">{{ user.username }}</td>
               <td v-if="editingId !== user.id"><span class="role-label" :class="user.role">{{ user.role }}</span></td>
               <td v-else>
-                <select v-model="editForm.role">
+                  <select class="ui-field" v-model="editForm.role">
                   <option value="admin">Administrateur</option>
                   <option value="technician">Technicien</option>
                   <option value="supervisor">Superviseur</option>
@@ -122,13 +122,13 @@ onMounted(refresh)
               <td>{{ formatDate(user.created_at) }}</td>
               <td class="actions">
                 <template v-if="editingId === user.id">
-                  <input v-model="editForm.password" type="password" minlength="6" placeholder="Nouveau mot de passe" />
-                  <button class="save-btn" @click="saveUser(user)">Enregistrer</button>
-                  <button class="quiet-btn" @click="cancelEditing">Annuler</button>
+                  <input class="ui-field" v-model="editForm.password" type="password" minlength="6" placeholder="Nouveau mot de passe" />
+                  <button class="save-btn ui-btn ui-btn-primary" @click="saveUser(user)">Enregistrer</button>
+                  <button class="quiet-btn ui-btn ui-btn-quiet" @click="cancelEditing">Annuler</button>
                 </template>
                 <template v-else>
-                  <button class="quiet-btn" @click="startEditing(user)">Modifier</button>
-                  <button class="delete-btn" @click="removeUser(user)">Supprimer</button>
+                  <button class="quiet-btn ui-btn ui-btn-quiet" @click="startEditing(user)">Modifier</button>
+                  <button class="delete-btn ui-btn ui-btn-danger" @click="removeUser(user)">Supprimer</button>
                 </template>
               </td>
             </tr>

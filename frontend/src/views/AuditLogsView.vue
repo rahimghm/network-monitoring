@@ -61,24 +61,24 @@ onMounted(refresh)
 </script>
 
 <template>
-  <div class="logs-page">
-    <div class="heading">
+  <div class="logs-page ui-page">
+    <div class="heading ui-heading">
       <div>
-        <p class="eyebrow">Administration</p>
-        <h2>Journal des actions</h2>
+        <p class="eyebrow ui-eyebrow">Administration</p>
+        <h2 class="ui-title">Journal des actions</h2>
       </div>
-      <button class="refresh-btn" :disabled="loading" @click="refresh">Actualiser</button>
+      <button class="refresh-btn ui-btn ui-btn-primary" :disabled="loading" @click="refresh">Actualiser</button>
     </div>
 
-    <div class="logs-panel">
+    <div class="logs-panel ui-panel">
       <form class="filters" @submit.prevent="refresh">
         <label>
           Utilisateur
-          <input v-model.trim="filters.username" type="search" placeholder="Nom d'utilisateur" />
+          <input class="ui-field" v-model.trim="filters.username" type="search" placeholder="Nom d'utilisateur" />
         </label>
         <label>
           Rôle
-          <select v-model="filters.role">
+          <select class="ui-field" v-model="filters.role">
             <option value="">Tous les rôles</option>
             <option value="admin">Admin</option>
             <option value="technician">Technicien</option>
@@ -87,28 +87,28 @@ onMounted(refresh)
         </label>
         <label>
           Action
-          <select v-model="filters.action">
+          <select class="ui-field" v-model="filters.action">
             <option value="">Toutes les actions</option>
             <option v-for="action in actions" :key="action" :value="action">{{ action }}</option>
           </select>
         </label>
         <label>
           Du
-          <input v-model="filters.date_from" type="date" />
+          <input class="ui-field" v-model="filters.date_from" type="date" />
         </label>
         <label>
           Au
-          <input v-model="filters.date_to" type="date" />
+          <input class="ui-field" v-model="filters.date_to" type="date" />
         </label>
         <div class="filter-actions">
-          <button class="apply-btn" type="submit" :disabled="loading">Filtrer</button>
-          <button class="reset-btn" type="button" :disabled="loading" @click="resetFilters">Réinitialiser</button>
+          <button class="apply-btn ui-btn ui-btn-primary" type="submit" :disabled="loading">Filtrer</button>
+          <button class="reset-btn ui-btn ui-btn-quiet" type="button" :disabled="loading" @click="resetFilters">Réinitialiser</button>
         </div>
       </form>
       <p v-if="loading" class="empty">Chargement...</p>
       <p v-else-if="!logs.length" class="empty">Aucune action enregistrée.</p>
-      <div v-else class="table-wrap">
-        <table>
+      <div v-else class="table-wrap ui-table-wrap">
+        <table class="ui-table">
           <thead>
             <tr><th>Date</th><th>Utilisateur</th><th>Rôle</th><th>Action</th><th>Ressource</th></tr>
           </thead>
