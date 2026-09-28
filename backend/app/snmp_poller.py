@@ -8,12 +8,14 @@ Résolution hostname -> IP puis collecte SNMP complète d'un équipement :
 """
 import socket
 import threading
+import ipaddress
+import time
 from typing import Optional
 from pysnmp.hlapi import (
     getCmd, nextCmd, SnmpEngine, CommunityData,
     UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
 )
-from .config import SNMP_TIMEOUT, SNMP_RETRIES
+from .config import HOSTNAME_CACHE_TTL_SECONDS, SNMP_TIMEOUT, SNMP_RETRIES
 
 # --- OIDs standards (IF-MIB / SNMPv2-MIB) ---
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
@@ -61,6 +63,8 @@ STP_STATE_MAP = {"1": "disabled", "2": "blocking", "3": "listening",
 # au niveau réseau plutôt que réellement en parallèle.
 _snmp_engine = SnmpEngine()
 _snmp_lock = threading.Lock()
+_hostname_cache = {}
+_hostname_cache_lock = threading.Lock()
 
 
 class SNMPError(Exception):
@@ -69,9 +73,31 @@ class SNMPError(Exception):
 
 def resolve_ip(hostname: str) -> str:
     """Résout un hostname (ex: switch1.local ou une IP directe) en IPv4."""
+    hostname = hostname.strip()
     try:
-        return socket.gethostbyname(hostname)
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        if "." not in hostname:
+            hostname = f"{hostname}.local"
+    try:
+        ipaddress.ip_address(hostname)
+        return hostname
+    except ValueError:
+        pass
+
+    now = time.monotonic()
+    with _hostname_cache_lock:
+        cached = _hostname_cache.get(hostname.lower())
+        if cached and now - cached[1] < HOSTNAME_CACHE_TTL_SECONDS:
+            return cached[0]
+    try:
+        address = socket.gethostbyname(hostname)
+        with _hostname_cache_lock:
+            _hostname_cache[hostname.lower()] = (address, now)
+        return address
     except socket.gaierror as e:
+        if cached:
+            return cached[0]
         raise SNMPError(f"Résolution impossible pour '{hostname}': {e}")
 
 

@@ -28,6 +28,7 @@ services:
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-20}
       SNMP_TIMEOUT: ${SNMP_TIMEOUT:-3}
       SNMP_RETRIES: ${SNMP_RETRIES:-1}
+      HOSTNAME_CACHE_TTL_SECONDS: ${HOSTNAME_CACHE_TTL_SECONDS:-60}
     depends_on:
       db:
         condition: service_healthy
