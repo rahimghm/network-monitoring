@@ -64,6 +64,18 @@ ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS in_discards BIGINT;
 ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS out_discards BIGINT;
 ALTER TABLE interface_metrics ADD COLUMN IF NOT EXISTS stp_state VARCHAR(20);
 
+-- The poller prefers IF-MIB high-capacity (64-bit) counters. Keep existing
+-- databases safe when they were originally created with narrower integers.
+ALTER TABLE interface_metrics ALTER COLUMN speed_bps TYPE BIGINT USING speed_bps::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN in_octets TYPE BIGINT USING in_octets::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN out_octets TYPE BIGINT USING out_octets::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN in_packets TYPE BIGINT USING in_packets::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN out_packets TYPE BIGINT USING out_packets::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN in_errors TYPE BIGINT USING in_errors::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN out_errors TYPE BIGINT USING out_errors::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN in_discards TYPE BIGINT USING in_discards::BIGINT;
+ALTER TABLE interface_metrics ALTER COLUMN out_discards TYPE BIGINT USING out_discards::BIGINT;
+
 CREATE INDEX IF NOT EXISTS idx_diagnostics_equipment ON diagnostics(equipment_id);
 CREATE INDEX IF NOT EXISTS idx_interface_diagnostic ON interface_metrics(diagnostic_id);
 

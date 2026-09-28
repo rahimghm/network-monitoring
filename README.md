@@ -1,5 +1,31 @@
 # Monitoring Réseau — Vue.js + FastAPI + PostgreSQL
 
+## Démarrage avec Docker
+
+Prérequis : Docker Desktop avec Compose.
+
+Depuis la racine du projet :
+```bash
+docker compose up --build
+```
+
+Ouvre ensuite `http://localhost`. Compose démarre PostgreSQL, FastAPI et
+Vue/Nginx ; aucune installation Python, venv, PostgreSQL ou Node.js n'est
+nécessaire sur la machine hôte.
+
+Arrêter les services :
+```bash
+docker compose down
+```
+
+Le script `database/schema.sql` est exécuté automatiquement uniquement lors
+de la création initiale du volume PostgreSQL. Pour réinitialiser complètement
+la base et rejouer le schéma (supprime les données locales) :
+```bash
+docker compose down -v
+docker compose up --build
+```
+
 Application web permettant d'ajouter un équipement réseau via son **hostname**,
 puis de lancer un diagnostic SNMP complet (statut, CPU, RAM, température,
 interfaces, trafic, vitesse) en un clic, avec stockage en base.
