@@ -29,6 +29,11 @@ services:
       SNMP_TIMEOUT: ${SNMP_TIMEOUT:-3}
       SNMP_RETRIES: ${SNMP_RETRIES:-1}
       HOSTNAME_CACHE_TTL_SECONDS: ${HOSTNAME_CACHE_TTL_SECONDS:-60}
+      DNS_ENABLED: ${DNS_ENABLED:-false}
+      DNS_SERVER: ${DNS_SERVER:-}
+      DNS_PORT: ${DNS_PORT:-53}
+      DNS_TIMEOUT: ${DNS_TIMEOUT:-3}
+      DNS_DOMAIN: ${DNS_DOMAIN:-}
     depends_on:
       db:
         condition: service_healthy

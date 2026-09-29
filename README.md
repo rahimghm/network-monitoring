@@ -37,7 +37,7 @@ frontend/  (Vue.js 3 + Vite + vue-router)
     ↓ HTTP (axios, JWT en header) + WebSocket (session de diagnostic live)
 backend/   (FastAPI)
     ↓ auth JWT (python-jose) + RBAC (Admin / Technician / Supervisor)
-    ↓ résolution hostname → IP (socket.gethostbyname)
+    ↓ résolution hostname → IP (serveur DNS externe configurable)
     ↓ requêtes SNMP (pysnmp, verrouillées via threading.Lock)
 switches simulés (VM OVS + snmpd) ou vrais équipements
     ↓
@@ -128,9 +128,9 @@ les restrictions d'interface ne remplacent pas le RBAC backend.
 
 ## 5. Utilisation — diagnostic multi-équipements en temps réel
 
-1. Dans le formulaire à gauche, entre un **nom** et le **hostname** de
-   l'équipement — par exemple `switch1.local` (résolu via mDNS/Avahi) ou
-   directement une IP fixe (`192.168.2.132`)
+1. Dans le formulaire à gauche, entre un **nom** et le **hostname/FQDN** de
+  l'équipement — par exemple `ALGIERS-RTR01.lab.example` ou directement une
+  IP fixe (`192.168.2.132`)
 2. Clique **Ajouter**
 3. **Coche** un ou plusieurs équipements dans la liste (ou "Tout sélectionner")
 4. Clique **Démarrer** — une connexion WebSocket (`/ws/diagnose`) s'ouvre,
@@ -201,6 +201,74 @@ Le backend s'appuie sur :
   puis `sudo systemctl restart snmpd`.
 
 ## 10. Notes de robustesse et limites connues
+
+## 11. DNS externe (développement et production)
+
+Le DNS est une dépendance externe : aucun service DNS n'est ajouté à
+`docker-compose.yml`. Le backend envoie ses requêtes DNS unicast au serveur
+configuré sur UDP/TCP port 53, tandis que la résolution des services Docker
+(`db`, `backend`) continue d'utiliser le DNS interne de Compose.
+
+### Développement avec une VM Ubuntu
+
+```text
+VM Ubuntu DNS (192.168.56.20)
+  ↓ dnsmasq ou BIND9, port 53
+lab.example
+  ↓
+FastAPI dans Docker
+  ↓ SNMP
+Équipements Cisco/Huawei sur 10.10.10.0/24 et 10.10.20.0/24
+```
+
+Avec dnsmasq, installez le service sur la VM puis ajoutez par exemple dans
+`/etc/dnsmasq.d/lab.conf` :
+
+```text
+address=/ALGIERS-RTR01.lab.example/10.10.10.1
+address=/ALGIERS-SW01.lab.example/10.10.10.2
+address=/ORAN-RTR01.lab.example/10.10.20.1
+address=/ORAN-SW01.lab.example/10.10.20.2
+```
+
+Redémarrez dnsmasq et autorisez le port 53 UDP et TCP dans le pare-feu de la
+VM. Dans le fichier `.env` du projet, activez la résolution et indiquez cette
+VM :
+
+```env
+DNS_ENABLED=true
+DNS_SERVER=192.168.56.20
+DNS_PORT=53
+DNS_TIMEOUT=3
+DNS_DOMAIN=lab.example
+```
+
+Testez depuis le conteneur backend :
+
+```bash
+docker compose exec backend python -c "from app.services.dns_resolver import resolve_hostname; print(resolve_hostname('ALGIERS-RTR01.lab.example'))"
+```
+
+`nslookup ALGIERS-RTR01.lab.example 192.168.56.20` est également utile si
+`nslookup` est installé dans l'image. La connectivité vers le serveur DNS et
+le routage SNMP vers les sous-réseaux des équipements sont deux exigences
+distinctes.
+
+### Production
+
+Remplacez uniquement la configuration d'environnement par celle de
+l'entreprise, sans modifier le code :
+
+```env
+DNS_ENABLED=true
+DNS_SERVER=<COMPANY_DNS_IP>
+DNS_DOMAIN=<COMPANY_DOMAIN>
+```
+
+Le serveur peut être dnsmasq, BIND9, Windows DNS, Infoblox ou un autre serveur
+DNS standard. `last_ip` dans `equipments` reste une adresse résolue en cache
+pour l'affichage et l'historique ; le hostname est la source de vérité lorsque
+DNS est activé.
 
 - Si le hostname ne se résout pas ou si le switch ne répond pas en SNMP,
   le diagnostic est quand même enregistré en base avec `is_up=false` et
